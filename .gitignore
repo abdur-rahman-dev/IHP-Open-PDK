@@ -192,3 +192,6 @@ cliff*toml
 
 # OpneVAF compiled models dir
 */*/ngspice/osdi
+
+# Opencode
+.opencode/
