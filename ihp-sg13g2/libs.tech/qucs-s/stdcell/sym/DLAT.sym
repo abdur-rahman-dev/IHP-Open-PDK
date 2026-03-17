@@ -1,0 +1,85 @@
+<!--
+Copyright 2025 IHP PDK Authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<!-- Ports -->
+<!-- Q -->
+<PortSym x="60" y="-40" type="1" angle="180" /> 
+<Text x="28" y="-46" size="10" color="#800000" text="Q" />
+<!-- Q_N (dlhr only)-->
+<PortSym x="60" y="0" type="1" angle="180" condition="type=dlhr" /> 
+<Text x="18" y="-6" size="10" color="#800000" text="Q-N" condition="type=dlhr" />
+<!-- Q_N (dllr only)-->
+<PortSym x="60" y="0" type="1" angle="180" condition="type=dllr" /> 
+<Text x="18" y="-6" size="10" color="#800000" text="Q-N" condition="type=dllr" />
+<!-- D -->
+<PortSym x="-40" y="-40" type="1" angle="0" /> 
+<Text x="-17" y="-46" size="10" color="#800000" text="D" />
+<!-- GATE (dlhq, dlhr, dlhrq) -->
+<PortSym x="-40" y="0" type="1" angle="180" condition="type=dlhq"/> 
+<Text x="-17" y="-5" size="10" color="#800000" text="GATE" condition="type=dlhq"/>
+<PortSym x="-40" y="0" type="1" angle="180" condition="type=dlhr"/> 
+<Text x="-17" y="-5" size="10" color="#800000" text="GATE" condition="type=dlhr"/>
+<PortSym x="-40" y="0" type="1" angle="180" condition="type=dlhrq"/> 
+<Text x="-17" y="-5" size="10" color="#800000" text="GATE" condition="type=dlhrq"/>
+<!-- GATE (dllr, dllrq) -->
+<PortSym x="-40" y="0" type="1" angle="180" condition="type=dllr"/> 
+<Text x="-17" y="-5" size="10" color="#800000" text="GATE-N" condition="type=dllr"/>
+<PortSym x="-40" y="0" type="1" angle="180" condition="type=dllrq"/> 
+<Text x="-17" y="-5" size="10" color="#800000" text="GATE-N" condition="type=dllrq"/>
+<!-- RESET_B (dlhr, dlhrq, dllr, dllrq)-->
+<PortSym x="10" y="40" type="1" angle="180" condition="type=dlhr" /> 
+<Text x="-8" y="7" size="10" color="#800000" text="RESET-B" condition="type=dlhr" />
+<PortSym x="10" y="40" type="1" angle="180" condition="type=dlhrq" /> 
+<Text x="-8" y="7" size="10" color="#800000" text="RESET-B" condition="type=dlhrq" />
+<PortSym x="10" y="40" type="1" angle="180" condition="type=dllr" /> 
+<Text x="-8" y="7" size="10" color="#800000" text="RESET-B" condition="type=dllr" />
+<PortSym x="10" y="40" type="1" angle="180" condition="type=dllrq"/> 
+<Text x="-8" y="7" size="10" color="#800000" text="RESET-B" condition="type=dllrq" />
+
+<Line x1="40" y1="-40" x2="60" y2="-40" color="#000080" width="2" style="1" /> <!-- Q leg -->
+<Line x1="-40" y1="-40" x2="-20" y2="-40" color="#000080" width="2" style="1" /> <!-- D leg -->
+<Line x1="-20" y1="20" x2="-20" y2="-60" color="#000080" width="2" style="1" />
+<Line x1="40" y1="20" x2="40" y2="-60" color="#000080" width="2" style="1" />
+<Line x1="-20" y1="20" x2="40" y2="20" color="#000080" width="2" style="1" />
+<Line x1="-20" y1="-60" x2="40" y2="-60" color="#000080" width="2" style="1" />
+<!-- RESET-B -->
+<Line x1="10" y1="40" x2="10" y2="30" color="#000080" width="2" style="1" condition="type=dlhr"/>
+<Arc x="5" y="30" arcWidth="10" height="-10" angle="0" len="5760" color="#000080" width="2" style="1" condition="type=dlhr"/>
+<Line x1="10" y1="40" x2="10" y2="30" color="#000080" width="2" style="1" condition="type=dlhrq"/>
+<Arc x="5" y="30" arcWidth="10" height="-10" angle="0" len="5760" color="#000080" width="2" style="1" condition="type=dlhrq"/>
+<Line x1="10" y1="40" x2="10" y2="30" color="#000080" width="2" style="1" condition="type=dllr" />
+<Arc x="5" y="30" arcWidth="10" height="-10" angle="0" len="5760" color="#000080" width="2" style="1" condition="type=dllr" />
+<Line x1="10" y1="40" x2="10" y2="30" color="#000080" width="2" style="1" condition="type=dllrq"/>
+<Arc x="5" y="30" arcWidth="10" height="-10" angle="0" len="5760" color="#000080" width="2" style="1" condition="type=dllrq"/>
+
+<!-- Q_N (dlhr only) -->
+<Line x1="50" y1="0" x2="60" y2="0" color="#000080" width="2" style="1" condition="type=dlhr"/>
+<Arc x="40" y="5" arcWidth="10" height="-10" angle="0" len="5760" color="#000080" width="2" style="1" condition="type=dlhr" />
+<!-- Q_N (dllr only) -->
+<Line x1="50" y1="0" x2="60" y2="0" color="#000080" width="2" style="1" condition="type=dllr"/>
+<Arc x="40" y="5" arcWidth="10" height="-10" angle="0" len="5760" color="#000080" width="2" style="1" condition="type=dllr" />
+<!-- GATE (dlh, dlhr, dlhrq)-->
+<Line x1="-40" y1="0" x2="-20" y2="0" color="#000080" width="2" style="1" condition="type=dlhq" />
+<Line x1="-40" y1="0" x2="-20" y2="0" color="#000080" width="2" style="1" condition="type=dlhr" />
+<Line x1="-40" y1="0" x2="-20" y2="0" color="#000080" width="2" style="1" condition="type=dlhrq" />
+<!-- GATE (dllr)-->
+<Line x1="-40" y1="0" x2="-30" y2="0" color="#000080" width="2" style="1" condition="type=dllr" />
+<Arc x="-30" y="5" arcWidth="10" height="-10" angle="0" len="5760" color="#000080" width="2" style="1" condition="type=dllr" />
+<!-- GATE ( dllrq)-->
+<Line x1="-40" y1="0" x2="-30" y2="0" color="#000080" width="2" style="1" condition="type=dllrq" />
+<Arc x="-30" y="5" arcWidth="10" height="-10" angle="0" len="5760" color="#000080" width="2" style="1" condition="type=dllrq" />
+
+
