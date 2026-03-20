@@ -25,8 +25,10 @@ limitations under the License.
         Tiehi
     </Description>
     <Models>
-        <DefaultModel value="sg13g2_tiehi"></DefaultModel>
-        <SpiceModel value="sg13g2_tiehi"></SpiceModel>
+        <DefaultModel value="Xtiehi">
+        </DefaultModel>
+        <SpiceModel value="Xtiehi">
+        </SpiceModel>
     </Models>
     <Netlists>
         <NgspiceNetlist value="{{{Letter}}}::schematic_id='nequal'tiehi{PartCounter} {nets} {VDD} {VSS} {{{model}}}::model='nonempty'"></NgspiceNetlist>

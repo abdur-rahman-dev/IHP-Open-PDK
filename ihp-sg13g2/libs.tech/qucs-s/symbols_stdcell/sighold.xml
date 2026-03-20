@@ -25,8 +25,10 @@ limitations under the License.
         Signal hold cell
     </Description>
     <Models>
-        <DefaultModel value="sg13g2_sighold"></DefaultModel>
-        <SpiceModel value="sg13g2_sighold"></SpiceModel>
+        <DefaultModel value="Xsighold">
+        </DefaultModel>
+        <SpiceModel value="Xsighold">
+        </SpiceModel>
     </Models>
     <Netlists>
         <NgspiceNetlist value="{{{Letter}}}::schematic_id='nequal'sighold{PartCounter} {nets} {VDD} {VSS} {{{model}}}::model='nonempty'"></NgspiceNetlist>

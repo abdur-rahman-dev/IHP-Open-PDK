@@ -25,8 +25,10 @@ limitations under the License.
         OR-AND-INV complex gate (2-1)
     </Description>
     <Models>
-        <DefaultModel value="sg13g2_o21ai_1"></DefaultModel>
-        <SpiceModel value="sg13g2_o21ai_1"></SpiceModel>
+        <DefaultModel value="Xo21ai">
+        </DefaultModel>
+        <SpiceModel value="Xo21ai">
+        </SpiceModel>
     </Models>
     <Netlists>
         <NgspiceNetlist value="{{{Letter}}}::schematic_id='nequal'o21ai{PartCounter} {nets} {VDD} {VSS} {{{model}}}::model='nonempty'"></NgspiceNetlist>

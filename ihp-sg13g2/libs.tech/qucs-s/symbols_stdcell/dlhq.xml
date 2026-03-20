@@ -25,8 +25,10 @@ limitations under the License.
         D latch (high-enable)
     </Description>
     <Models>
-        <DefaultModel value="sg13g2_dlhq_1"></DefaultModel>
-        <SpiceModel value="sg13g2_dlhq_1"></SpiceModel>
+        <DefaultModel value="Xdlhq">
+        </DefaultModel>
+        <SpiceModel value="Xdlhq">
+        </SpiceModel>
     </Models>
     <Netlists>
         <NgspiceNetlist value="{{{Letter}}}::schematic_id='nequal'dlhq{PartCounter} {nets} {VDD} {VSS} {{{model}}}::model='nonempty'"></NgspiceNetlist>

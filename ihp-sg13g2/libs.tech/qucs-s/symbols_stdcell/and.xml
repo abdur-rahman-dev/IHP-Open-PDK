@@ -25,9 +25,9 @@ limitations under the License.
         2-input AND gate
     </Description>
     <Models>
-        <DefaultModel value="{names}">
+        <DefaultModel value="Xand">
         </DefaultModel>
-        <SpiceModel value="{names}">
+        <SpiceModel value="Xand">
         </SpiceModel>
     </Models>
     <Netlists>

@@ -25,9 +25,9 @@ limitations under the License.
         Inverter
     </Description>
     <Models>
-        <DefaultModel value="{names}">
+        <DefaultModel value="Xinv">
         </DefaultModel>
-        <SpiceModel value="{names}">
+        <SpiceModel value="Xinv">
         </SpiceModel>
     </Models>
     <Netlists>

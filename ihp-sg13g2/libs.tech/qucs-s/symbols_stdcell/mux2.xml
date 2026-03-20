@@ -25,8 +25,10 @@ limitations under the License.
         2-input multiplexer
     </Description>
     <Models>
-        <DefaultModel value="{names}"></DefaultModel>
-        <SpiceModel value="{names}"></SpiceModel>
+        <DefaultModel value="Xmux2">
+        </DefaultModel>
+        <SpiceModel value="Xmux2">
+        </SpiceModel>
     </Models>
     <Netlists>
         <NgspiceNetlist value="{{{Letter}}}::schematic_id='nequal'mux{PartCounter} {nets} {VDD} {VSS} {{{model}}}::model='nonempty'"></NgspiceNetlist>

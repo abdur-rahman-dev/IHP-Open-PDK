@@ -25,8 +25,10 @@ limitations under the License.
         D latch with reset (complementary outputs)
     </Description>
     <Models>
-        <DefaultModel value="sg13g2_dlhrq_1"></DefaultModel>
-        <SpiceModel value="sg13g2_dlhrq_1"></SpiceModel>
+        <DefaultModel value="Xdlhrq">
+        </DefaultModel>
+        <SpiceModel value="Xdlhrq">
+        </SpiceModel>
     </Models>
     <Netlists>
         <NgspiceNetlist value="{{{Letter}}}::schematic_id='nequal'dlhrq{PartCounter} {nets} {VDD} {VSS} {{{model}}}::model='nonempty'"></NgspiceNetlist>
