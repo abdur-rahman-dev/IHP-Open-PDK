@@ -294,11 +294,24 @@ def check_environment(config: InstallConfig) -> list[EnvCheckResult]:
     return results
 
 
+def _check_selected_tools(config: InstallConfig) -> list[ToolInfo]:
+    all_tools = check_tools(config)
+    selected = set(config.tools_to_check)
+    filtered = []
+    for t in all_tools:
+        base = t.name.split("/")[0]
+        if base in selected or t.name in selected:
+            filtered.append(t)
+    return filtered
+
+
 def build_install_plan(config: InstallConfig) -> InstallPlan:
     plan = InstallPlan(config=config)
     plan.pdk_root = config.get_pdk_root()
 
-    if config.install_mode.value == "new":
+    if config.check_tools and config.tools_to_check:
+        plan.tools = _check_selected_tools(config)
+    elif config.install_mode.value == "new":
         plan.tools = check_tools(config)
 
     plan.env_checks = check_environment(config)
