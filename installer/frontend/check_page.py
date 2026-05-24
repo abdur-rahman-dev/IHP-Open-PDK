@@ -44,6 +44,8 @@ class ToolCheckWorker(QThread):
 
 class CheckPage(QWidget):
     back_requested = Signal()
+    install_ready = Signal(bool)
+    back_allowed = Signal(bool)
 
     def __init__(self, config: InstallConfig, theme_manager, parent=None):
         super().__init__(parent)
@@ -141,18 +143,6 @@ class CheckPage(QWidget):
         self.hint_label.hide()
         root.addWidget(self.hint_label)
 
-        btn_lay = QHBoxLayout()
-        self.back_btn = QPushButton("< Back")
-        self.back_btn.clicked.connect(self.back_requested.emit)
-        btn_lay.addWidget(self.back_btn)
-        btn_lay.addStretch()
-        self.install_btn = QPushButton("Install")
-        self.install_btn.setObjectName("install_btn")
-        self.install_btn.clicked.connect(self._on_install)
-        self.install_btn.setEnabled(False)
-        btn_lay.addWidget(self.install_btn)
-        root.addLayout(btn_lay)
-
     def run_check(self):
         self.progress_bar.show()
         self.tools_group.hide()
@@ -161,8 +151,8 @@ class CheckPage(QWidget):
         self.exec_log.hide()
         self.install_result_label.hide()
         self.hint_label.hide()
-        self.install_btn.setEnabled(False)
-        self.back_btn.setEnabled(True)
+        self.install_ready.emit(False)
+        self.back_allowed.emit(True)
 
         if self.config.check_tools and self.config.tools_to_check:
             self._run_tool_check()
@@ -224,7 +214,7 @@ class CheckPage(QWidget):
             )
             self.result_label.setObjectName("result_error")
             self.result_label.setStyle(self.result_label.style())
-            self.install_btn.setEnabled(False)
+            self.install_ready.emit(False)
 
     def _run_env_check(self):
         self.status_label.setText("Checking environment variables...")
@@ -238,7 +228,7 @@ class CheckPage(QWidget):
 
         self.progress_bar.hide()
         can_install = not (self.plan and self.plan.has_errors())
-        self.install_btn.setEnabled(can_install)
+        self.install_ready.emit(can_install)
 
         self.hint_label.setText("Click Install to proceed.")
         self.hint_label.show()
@@ -259,8 +249,8 @@ class CheckPage(QWidget):
         if reply != QMessageBox.Yes:
             return
 
-        self.install_btn.setEnabled(False)
-        self.back_btn.setEnabled(False)
+        self.install_ready.emit(False)
+        self.back_allowed.emit(False)
         self.hint_label.hide()
 
         dialog = QDialog(self)
@@ -313,7 +303,7 @@ class CheckPage(QWidget):
         def on_all_done(success):
             dialog_progress.setValue(100)
             dialog_close_btn.setEnabled(True)
-            self.back_btn.setEnabled(True)
+            self.back_allowed.emit(True)
             if success:
                 dialog_status.setText("Installation completed successfully!")
                 dialog_status.setStyleSheet("color: green; font-weight: bold;")

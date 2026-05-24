@@ -65,11 +65,11 @@ class MainWindow(QMainWindow):
         header_spacer.setFixedWidth(108)
         header_row.addWidget(header_spacer)
 
-        header = QLabel("IHP-Open-PDK Installer")
-        header.setFont(QFont("Sans", 16, QFont.Bold))
-        header.setObjectName("header_title")
-        header.setAlignment(Qt.AlignCenter)
-        header_row.addWidget(header, 1)
+        self.header_label = QLabel("Configuration")
+        self.header_label.setFont(QFont("Sans", 16, QFont.Bold))
+        self.header_label.setObjectName("header_title")
+        self.header_label.setAlignment(Qt.AlignCenter)
+        header_row.addWidget(self.header_label, 1)
 
         self.theme_combo = self.theme_manager.create_combo(self)
         self.theme_combo.setFixedWidth(108)
@@ -92,41 +92,58 @@ class MainWindow(QMainWindow):
         self.stacked.addWidget(self.check_page)
 
         nav_lay = QHBoxLayout()
-        self.nav_left = QLabel("")
-        nav_lay.addWidget(self.nav_left)
+        nav_lay.addStretch()
 
         self.step_label = QLabel("Step 1 of 2: Configuration")
         self.step_label.setObjectName("step_label")
         self.step_label.setAlignment(Qt.AlignCenter)
         nav_lay.addWidget(self.step_label)
+        nav_lay.addStretch()
+
+        self.back_btn = QPushButton("< Back")
+        self.back_btn.setFixedWidth(100)
+        self.back_btn.clicked.connect(self._go_to_choices)
+        self.back_btn.hide()
+        nav_lay.addWidget(self.back_btn)
 
         self.next_btn = QPushButton("Next >")
         self.next_btn.setFixedWidth(120)
-        self.next_btn.clicked.connect(self._on_next)
+        self.next_btn.clicked.connect(self._on_next_action)
         nav_lay.addWidget(self.next_btn)
 
         self.close_btn = QPushButton("Close")
         self.close_btn.setFixedWidth(80)
+        self.close_btn.setObjectName("close_btn")
         self.close_btn.clicked.connect(self.close)
         nav_lay.addWidget(self.close_btn)
 
         root.addLayout(nav_lay)
 
-        self.check_page.back_requested.connect(self._go_to_choices)
+        self.check_page.install_ready.connect(self._on_install_ready)
+        self.check_page.back_allowed.connect(self._on_back_allowed)
 
         self._update_nav()
 
     def _update_nav(self):
         idx = self.stacked.currentIndex()
         total = self.stacked.count()
-        self.step_label.setText(f"Step {idx + 1} of {total}: {self._step_name(idx)}")
+        step_name = self._step_name(idx)
+        self.step_label.setText(f"Step {idx + 1} of {total}: {step_name}")
+        self.header_label.setText(step_name)
 
         if idx == 0:
+            self.back_btn.hide()
             self.next_btn.setText("Next >")
-            self.next_btn.show()
-            self.nav_left.setText("")
+            self.next_btn.setObjectName("")
+            self.next_btn.setEnabled(True)
+            self.next_btn.setStyle(self.next_btn.style())
         elif idx == 1:
-            self.next_btn.hide()
+            self.back_btn.show()
+            self.back_btn.setEnabled(True)
+            self.next_btn.setText("Install")
+            self.next_btn.setObjectName("install_btn")
+            self.next_btn.setStyle(self.next_btn.style())
+            self.next_btn.setEnabled(False)
 
     def _step_name(self, idx):
         return ["Configuration", "Check & Install"][idx]
@@ -163,6 +180,21 @@ class MainWindow(QMainWindow):
     def _go_to_choices(self):
         self.stacked.setCurrentIndex(0)
         self._update_nav()
+
+    def _on_next_action(self):
+        idx = self.stacked.currentIndex()
+        if idx == 0:
+            self._on_next()
+        elif idx == 1:
+            self.check_page._on_install()
+
+    def _on_install_ready(self, enabled: bool):
+        if self.stacked.currentIndex() == 1:
+            self.next_btn.setEnabled(enabled)
+
+    def _on_back_allowed(self, enabled: bool):
+        if self.stacked.currentIndex() == 1:
+            self.back_btn.setEnabled(enabled)
 
     def closeEvent(self, event: QCloseEvent):
         if self.check_page.executor and self.check_page.executor.isRunning():
