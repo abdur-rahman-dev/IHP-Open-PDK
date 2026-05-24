@@ -1,0 +1,291 @@
+QMainWindow {
+    background-color: @bg@;
+    color: @text@;
+}
+
+QWidget {
+    background-color: transparent;
+    color: @text@;
+    font-family: "Sans", "Segoe UI", sans-serif;
+    font-size: 12px;
+}
+
+QLabel#header_title {
+    color: @brand@;
+    font-size: 16px;
+    font-weight: bold;
+    background-color: transparent;
+}
+
+QLabel#separator {
+    background-color: @separator@;
+    color: transparent;
+}
+
+QLabel#page_title {
+    color: @brand@;
+    font-size: 18px;
+    font-weight: bold;
+    background-color: transparent;
+}
+
+QLabel#step_label {
+    color: @text_secondary@;
+    font-size: 11px;
+    background-color: transparent;
+}
+
+QLabel#dim_note {
+    color: @text_dim@;
+    font-size: 11px;
+    background-color: transparent;
+}
+
+QLabel#subtitle {
+    color: @text_secondary@;
+    font-size: 11px;
+    background-color: transparent;
+}
+
+QLabel#result_ok {
+    color: @status_ok@;
+    font-size: 14px;
+    font-weight: bold;
+    background-color: transparent;
+}
+
+QLabel#result_warn {
+    color: @status_warn@;
+    font-size: 14px;
+    font-weight: bold;
+    background-color: transparent;
+}
+
+QLabel#result_error {
+    color: @status_error@;
+    font-size: 14px;
+    font-weight: bold;
+    background-color: transparent;
+}
+
+QGroupBox {
+    font-weight: bold;
+    border: 1px solid @group_border@;
+    border-radius: 6px;
+    margin-top: 12px;
+    padding: 12px 8px 8px 8px;
+    background-color: @group_bg@;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 2px 8px;
+    color: @text@;
+    background-color: @group_bg@;
+}
+
+QPushButton {
+    background-color: @btn_bg@;
+    color: @btn_text@;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 12px;
+    min-height: 20px;
+}
+
+QPushButton:hover {
+    background-color: @btn_hover@;
+}
+
+QPushButton:pressed {
+    background-color: @btn_hover@;
+}
+
+QPushButton:disabled {
+    background-color: @border@;
+    color: @text_dim@;
+}
+
+QPushButton#browse_btn {
+    background-color: @surface@;
+    color: @text@;
+    border: 1px solid @border@;
+}
+
+QPushButton#browse_btn:hover {
+    background-color: @bg_alt@;
+}
+
+QLineEdit {
+    background-color: @input_bg@;
+    color: @text@;
+    border: 1px solid @input_border@;
+    border-radius: 4px;
+    padding: 5px 8px;
+    min-height: 20px;
+}
+
+QLineEdit::placeholder {
+    color: @text_dim@;
+}
+
+QRadioButton {
+    spacing: 6px;
+    color: @text@;
+    background-color: transparent;
+}
+
+QRadioButton::indicator {
+    width: 14px;
+    height: 14px;
+    border: 2px solid @border@;
+    border-radius: 8px;
+    background-color: @input_bg@;
+}
+
+QRadioButton::indicator:checked {
+    border-color: @brand@;
+    background-color: @brand@;
+}
+
+QCheckBox {
+    spacing: 6px;
+    color: @text@;
+    background-color: transparent;
+}
+
+QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 2px solid @border@;
+    border-radius: 3px;
+    background-color: @input_bg@;
+}
+
+QCheckBox::indicator:checked {
+    border-color: @brand@;
+    background-color: @brand@;
+}
+
+QComboBox {
+    background-color: @input_bg@;
+    color: @text@;
+    border: 1px solid @input_border@;
+    border-radius: 4px;
+    padding: 4px 8px;
+    min-height: 20px;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 6px solid @text_secondary@;
+}
+
+QComboBox QAbstractItemView {
+    background-color: @surface@;
+    color: @text@;
+    border: 1px solid @border@;
+    selection-background-color: @brand_light@;
+    selection-color: @text@;
+}
+
+QTableWidget {
+    background-color: @surface@;
+    color: @text@;
+    gridline-color: @table_grid@;
+    border: 1px solid @border@;
+    alternate-background-color: @table_alt_row@;
+}
+
+QTableWidget::item {
+    padding: 4px;
+}
+
+QTableWidget::item:selected {
+    background-color: @brand_light@;
+}
+
+QHeaderView::section {
+    background-color: @table_header_bg@;
+    color: @table_header_text@;
+    padding: 6px 8px;
+    border: none;
+    border-bottom: 2px solid @brand@;
+    font-weight: bold;
+}
+
+QProgressBar {
+    background-color: @bg_alt@;
+    border: 1px solid @border@;
+    border-radius: 4px;
+    text-align: center;
+    color: @text@;
+    min-height: 20px;
+}
+
+QProgressBar::chunk {
+    background-color: @progress_bar@;
+    border-radius: 3px;
+}
+
+QTextEdit {
+    background-color: @surface@;
+    color: @text@;
+    border: 1px solid @border@;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+QScrollBar:vertical {
+    background-color: transparent;
+    width: 10px;
+    margin: 0;
+}
+
+QScrollBar::handle:vertical {
+    background-color: @scrollbar@;
+    border-radius: 5px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: @scrollbar_hover@;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    height: 0;
+}
+
+QScrollBar:horizontal {
+    background-color: transparent;
+    height: 10px;
+    margin: 0;
+}
+
+QScrollBar::handle:horizontal {
+    background-color: @scrollbar@;
+    border-radius: 5px;
+    min-width: 30px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background-color: @scrollbar_hover@;
+}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+    width: 0;
+}
+
+QMessageBox {
+    background-color: @bg@;
+    color: @text@;
+}
