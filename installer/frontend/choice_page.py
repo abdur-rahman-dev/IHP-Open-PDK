@@ -111,6 +111,36 @@ class ChoicePage(QWidget):
         grid.addWidget(eda_group, row, 0, 1, 2)
         row += 1
 
+        tc_group = QGroupBox("Tool Check")
+        tc_lay = QVBoxLayout()
+        self.tc_enable = QCheckBox("Check EDA tools requirement")
+        self.tc_enable.setChecked(False)
+        self.tc_enable.toggled.connect(self._on_tc_toggled)
+        tc_lay.addWidget(self.tc_enable)
+
+        tc_tools_widget = QWidget()
+        tc_tools_lay = QVBoxLayout()
+        tc_tools_lay.setContentsMargins(20, 4, 4, 4)
+        tc_tools_lay.setSpacing(4)
+        self.tc_checks = {}
+        all_tools = [
+            "openvaf/openvaf-r", "ngspice", "Xyce", "buildxyceplugin",
+            "gnucap", "gnucap-mg-vams", "xschem", "qucs-s",
+            "klayout", "magic", "python3", "pip",
+        ]
+        for tool in all_tools:
+            cb = QCheckBox(tool)
+            cb.setChecked(False)
+            self.tc_checks[tool] = cb
+            tc_tools_lay.addWidget(cb)
+        tc_tools_widget.setLayout(tc_tools_lay)
+        tc_tools_widget.hide()
+        self.tc_tools_widget = tc_tools_widget
+        tc_lay.addWidget(tc_tools_widget)
+        tc_group.setLayout(tc_lay)
+        grid.addWidget(tc_group, row, 0, 1, 2)
+        row += 1
+
         dir_group = QGroupBox("Installation Directory")
         dir_lay = QHBoxLayout()
         self.dir_input = QLineEdit()
@@ -129,6 +159,33 @@ class ChoicePage(QWidget):
 
     def _on_pdk_changed(self, btn):
         pass
+
+    def _on_tc_toggled(self, checked):
+        self.tc_tools_widget.setVisible(checked)
+        if checked:
+            self._sync_tc_from_eda()
+
+    def _sync_tc_from_eda(self):
+        eda_tools = set()
+        for sim, cb in self.sim_checks.items():
+            if cb.isChecked():
+                eda_tools.add(sim.value)
+                if sim == Simulator.NGSPICE:
+                    pass
+                elif sim == Simulator.XYCE:
+                    eda_tools.add("buildxyceplugin")
+                elif sim == Simulator.GNUCAP:
+                    eda_tools.add("gnucap-mg-vams")
+        for ed, cb in self.sch_checks.items():
+            if cb.isChecked():
+                eda_tools.add(ed.value)
+        for ed, cb in self.lay_checks.items():
+            if cb.isChecked():
+                eda_tools.add(ed.value)
+        for tool, cb in self.tc_checks.items():
+            base = tool.split("/")[0]
+            if base in eda_tools or tool in eda_tools:
+                cb.setChecked(True)
 
     def _on_browse(self):
         d = QFileDialog.getExistingDirectory(self, "Select Installation Directory")
@@ -160,5 +217,10 @@ class ChoicePage(QWidget):
         self.config.install_dir = (
             self.dir_input.text().strip() or None
         )
+
+        self.config.check_tools = self.tc_enable.isChecked()
+        self.config.tools_to_check = [
+            t for t, cb in self.tc_checks.items() if cb.isChecked()
+        ]
 
         return self.config

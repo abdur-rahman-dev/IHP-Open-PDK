@@ -71,6 +71,8 @@ class InstallConfig:
     install_mode: InstallMode = InstallMode.NEW
     install_dir: Optional[str] = None
     pdk_root: Optional[str] = None
+    check_tools: bool = False
+    tools_to_check: list[str] = field(default_factory=list)
 
     def get_pdk_root(self) -> str:
         if self.install_dir:
