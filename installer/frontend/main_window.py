@@ -28,7 +28,25 @@ class MainWindow(QMainWindow):
                     self.config.pdk_root = str(candidate)
                     break
 
+        env_pdk_root = os.environ.get("PDK_ROOT")
+        env_pdk = os.environ.get("PDK")
+        auto_change = bool(env_pdk_root and env_pdk)
+
         self._build_ui()
+
+        if auto_change:
+            self.choice_page.mode_change.setChecked(True)
+            self.choice_page.mode_new.setChecked(False)
+
+        default_pdk_dir = ""
+        if env_pdk_root and env_pdk:
+            default_pdk_dir = os.path.join(env_pdk_root, env_pdk)
+        elif self.config.pdk_root:
+            default_pdk_dir = os.path.join(
+                self.config.pdk_root, self.config.pdk.value
+            )
+        if default_pdk_dir:
+            self.choice_page.dir_input.setText(default_pdk_dir)
 
     def _build_ui(self):
         self.setWindowTitle("IHP-Open-PDK Installer")
