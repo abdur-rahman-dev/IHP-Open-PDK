@@ -11,7 +11,6 @@ from PySide6.QtGui import QFont
 from installer.backend.models import InstallConfig
 from installer.frontend.choice_page import ChoicePage
 from installer.frontend.check_page import CheckPage
-from installer.frontend.plan_page import PlanPage
 
 
 class MainWindow(QMainWindow):
@@ -70,17 +69,15 @@ class MainWindow(QMainWindow):
 
         self.choice_page = ChoicePage(self.config)
         self.check_page = CheckPage(self.config, self.theme_manager)
-        self.plan_page = PlanPage(self.theme_manager)
 
         self.stacked.addWidget(self.choice_page)
         self.stacked.addWidget(self.check_page)
-        self.stacked.addWidget(self.plan_page)
 
         nav_lay = QHBoxLayout()
         self.nav_left = QLabel("")
         nav_lay.addWidget(self.nav_left)
 
-        self.step_label = QLabel("Step 1 of 3: Configuration")
+        self.step_label = QLabel("Step 1 of 2: Configuration")
         self.step_label.setObjectName("step_label")
         self.step_label.setAlignment(Qt.AlignCenter)
         nav_lay.addWidget(self.step_label)
@@ -92,9 +89,7 @@ class MainWindow(QMainWindow):
 
         root.addLayout(nav_lay)
 
-        self.check_page.next_requested.connect(self._go_to_plan)
         self.check_page.back_requested.connect(self._go_to_choices)
-        self.plan_page.back_requested.connect(self._go_to_check)
 
         self._update_nav()
 
@@ -109,11 +104,9 @@ class MainWindow(QMainWindow):
             self.nav_left.setText("")
         elif idx == 1:
             self.next_btn.hide()
-        elif idx == 2:
-            self.next_btn.hide()
 
     def _step_name(self, idx):
-        return ["Configuration", "Tool Check", "Installation Plan"][idx]
+        return ["Configuration", "Check & Install"][idx]
 
     def _on_next(self):
         if self.stacked.currentIndex() == 0:
@@ -137,16 +130,6 @@ class MainWindow(QMainWindow):
             self._update_nav()
             self.check_page.run_check()
 
-    def _go_to_plan(self):
-        self.stacked.setCurrentIndex(2)
-        self._update_nav()
-        if self.check_page.plan:
-            self.plan_page.set_plan(self.check_page.plan)
-
     def _go_to_choices(self):
         self.stacked.setCurrentIndex(0)
-        self._update_nav()
-
-    def _go_to_check(self):
-        self.stacked.setCurrentIndex(1)
         self._update_nav()

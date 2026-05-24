@@ -1,15 +1,17 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QProgressBar,
-    QGroupBox,
+    QGroupBox, QTextEdit, QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QColor
 
 from installer.backend.models import (
     InstallPlan, ToolStatusEnum, EnvCheckResult, InstallConfig,
+    ExecStepStatus,
 )
 from installer.backend.checker import build_install_plan
+from installer.backend.executor import InstallExecutor
 
 
 class CheckWorker(QThread):
@@ -28,7 +30,6 @@ class CheckWorker(QThread):
 
 
 class CheckPage(QWidget):
-    next_requested = Signal()
     back_requested = Signal()
 
     def __init__(self, config: InstallConfig, theme_manager, parent=None):
@@ -36,6 +37,7 @@ class CheckPage(QWidget):
         self.config = config
         self.theme_manager = theme_manager
         self.plan: InstallPlan | None = None
+        self.executor: InstallExecutor | None = None
         self._build_ui()
 
     def _build_ui(self):
@@ -103,15 +105,30 @@ class CheckPage(QWidget):
         self.result_label.hide()
         root.addWidget(self.result_label)
 
+        self.exec_log = QTextEdit()
+        self.exec_log.setReadOnly(True)
+        self.exec_log.setMaximumHeight(120)
+        log_font = self.exec_log.font()
+        log_font.setFamily("monospace")
+        log_font.setPointSize(9)
+        self.exec_log.setFont(log_font)
+        self.exec_log.hide()
+        root.addWidget(self.exec_log)
+
+        self.install_result_label = QLabel("")
+        self.install_result_label.setAlignment(Qt.AlignCenter)
+        self.install_result_label.hide()
+        root.addWidget(self.install_result_label)
+
         btn_lay = QHBoxLayout()
         self.back_btn = QPushButton("< Back")
         self.back_btn.clicked.connect(self.back_requested.emit)
         btn_lay.addWidget(self.back_btn)
         btn_lay.addStretch()
-        self.next_btn = QPushButton("View Plan >")
-        self.next_btn.clicked.connect(self.next_requested.emit)
-        self.next_btn.setEnabled(False)
-        btn_lay.addWidget(self.next_btn)
+        self.install_btn = QPushButton("Install")
+        self.install_btn.clicked.connect(self._on_install)
+        self.install_btn.setEnabled(False)
+        btn_lay.addWidget(self.install_btn)
         root.addLayout(btn_lay)
 
     def run_check(self):
@@ -119,7 +136,10 @@ class CheckPage(QWidget):
         self.tools_table.hide()
         self.env_group.hide()
         self.result_label.hide()
-        self.next_btn.setEnabled(False)
+        self.exec_log.hide()
+        self.install_result_label.hide()
+        self.install_btn.setEnabled(False)
+        self.back_btn.setEnabled(True)
         self.status_label.setText("Running tool checks...")
 
         self.worker = CheckWorker(self.config)
@@ -139,16 +159,86 @@ class CheckPage(QWidget):
         if plan.has_errors():
             self.result_label.setText("ERRORS found - see details below")
             self.result_label.setObjectName("result_error")
+            self.install_btn.setEnabled(False)
         elif plan.has_warnings():
             self.result_label.setText("Completed with WARNINGS")
             self.result_label.setObjectName("result_warn")
+            self.install_btn.setEnabled(True)
         else:
             self.result_label.setText("All checks PASSED")
             self.result_label.setObjectName("result_ok")
+            self.install_btn.setEnabled(True)
         self.result_label.setStyle(self.result_label.style())
         self.result_label.show()
-        self.next_btn.setEnabled(True)
-        self.status_label.setText("Check complete.")
+        self.status_label.setText("Check complete. Click Install to proceed.")
+
+    def _on_install(self):
+        if not self.plan:
+            return
+        reply = QMessageBox.question(
+            self, "Confirm Installation",
+            "This will install/configure the PDK.\n\nProceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        self.install_btn.setEnabled(False)
+        self.back_btn.setEnabled(False)
+        self.exec_log.show()
+        self.exec_log.clear()
+        self.install_result_label.hide()
+
+        self.progress_bar.show()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Installing...")
+        self.status_label.setText("Installing... please wait.")
+
+        self.executor = InstallExecutor(self.plan)
+        self.executor.step_started.connect(self._on_step_started)
+        self.executor.step_finished.connect(self._on_step_finished)
+        self.executor.all_done.connect(self._on_install_done)
+        self.executor.log_line.connect(self._on_log)
+        self.executor.start()
+
+    def _on_step_started(self, idx: int, label: str):
+        self.exec_log.append(f"[{idx+1}] {label}...")
+        self.progress_bar.setFormat(f"Step {idx+1}: {label}")
+
+    def _on_step_finished(self, idx: int, label: str, ok: bool):
+        status = "OK" if ok else "FAILED"
+        self.exec_log.append(f"    -> {status}")
+
+        total = len(self.executor.steps)
+        done = sum(
+            1 for s in self.executor.steps
+            if s.status in (ExecStepStatus.DONE, ExecStepStatus.FAILED)
+        )
+        pct = int((done / total) * 100) if total > 0 else 100
+        self.progress_bar.setValue(pct)
+
+    def _on_log(self, msg: str):
+        self.exec_log.append(msg)
+
+    def _on_install_done(self, success: bool):
+        self.progress_bar.setValue(100)
+        self.back_btn.setEnabled(True)
+
+        if success:
+            self.install_result_label.setText("Installation completed successfully!")
+            self.install_result_label.setObjectName("result_ok")
+            self.status_label.setText("Installation complete.")
+            self.progress_bar.setFormat("Done")
+        else:
+            self.install_result_label.setText("Installation completed with errors. See log above.")
+            self.install_result_label.setObjectName("result_error")
+            self.status_label.setText("Some steps failed.")
+            self.progress_bar.setFormat("Done (with errors)")
+
+        self.install_result_label.setStyle(self.install_result_label.style())
+        self.install_result_label.show()
 
     def _get_status_color(self, status: ToolStatusEnum) -> QColor:
         if status == ToolStatusEnum.OK:
