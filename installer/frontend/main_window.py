@@ -3,10 +3,10 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QStackedWidget, QMessageBox,
+    QPushButton, QStackedWidget, QMessageBox, QApplication,
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QCloseEvent
 
 from installer.backend.models import InstallConfig
 from installer.frontend.choice_page import ChoicePage
@@ -133,3 +133,13 @@ class MainWindow(QMainWindow):
     def _go_to_choices(self):
         self.stacked.setCurrentIndex(0)
         self._update_nav()
+
+    def closeEvent(self, event: QCloseEvent):
+        if self.check_page.executor and self.check_page.executor.isRunning():
+            self.check_page.executor.cancel()
+            self.check_page.executor.wait(3000)
+        if hasattr(self.check_page, "worker") and self.check_page.worker and self.check_page.worker.isRunning():
+            self.check_page.worker.quit()
+            self.check_page.worker.wait(2000)
+        QApplication.instance().quit()
+        event.accept()

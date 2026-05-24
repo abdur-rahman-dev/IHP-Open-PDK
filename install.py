@@ -33,6 +33,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setQuitOnLastWindowClosed(True)
 
     theme_manager = ThemeManager(app, initial="system")
 
