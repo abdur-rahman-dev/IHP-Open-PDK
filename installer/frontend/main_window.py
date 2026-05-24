@@ -87,6 +87,11 @@ class MainWindow(QMainWindow):
         self.next_btn.clicked.connect(self._on_next)
         nav_lay.addWidget(self.next_btn)
 
+        self.close_btn = QPushButton("Close")
+        self.close_btn.setFixedWidth(80)
+        self.close_btn.clicked.connect(self.close)
+        nav_lay.addWidget(self.close_btn)
+
         root.addLayout(nav_lay)
 
         self.check_page.back_requested.connect(self._go_to_choices)
