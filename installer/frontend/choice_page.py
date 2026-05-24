@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QRadioButton,
     QCheckBox, QButtonGroup, QLineEdit, QPushButton, QGroupBox,
-    QFileDialog, QGridLayout, QComboBox,
+    QFileDialog, QGridLayout,
 )
 from PySide6.QtCore import Qt
 
@@ -24,19 +24,14 @@ class ChoicePage(QWidget):
 
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setSpacing(16)
-
-        title = QLabel("PDK Installer Configuration")
-        title.setObjectName("page_title")
-        title.setAlignment(Qt.AlignCenter)
-        root.addWidget(title)
+        root.setSpacing(12)
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(24)
-        grid.setVerticalSpacing(12)
+        grid.setVerticalSpacing(10)
         row = 0
 
-        pdk_group = QGroupBox("PDK Selection (select one)")
+        pdk_group = QGroupBox("PDK Selection")
         pdk_lay = QHBoxLayout()
         self.pdk_btn_group = QButtonGroup(self)
         for i, (val, label, default) in enumerate(PDK_OPTIONS):
@@ -52,67 +47,71 @@ class ChoicePage(QWidget):
         grid.addWidget(pdk_group, row, 0, 1, 2)
         row += 1
 
-        sim_group = QGroupBox("Simulators (select one or more)")
-        sim_lay = QHBoxLayout()
-        self.sim_checks = {}
-        for sim in Simulator:
-            cb = QCheckBox(sim.value)
-            cb.setChecked(sim == Simulator.NGSPICE)
-            cb.setProperty("sim_value", sim)
-            self.sim_checks[sim] = cb
-            sim_lay.addWidget(cb)
-        sim_group.setLayout(sim_lay)
-        grid.addWidget(sim_group, row, 0, 1, 2)
-        row += 1
-
-        sch_group = QGroupBox("Schematic Editor (select one or both)")
-        sch_lay = QHBoxLayout()
-        self.sch_checks = {}
-        for ed in SchematicEditor:
-            cb = QCheckBox(ed.value)
-            cb.setChecked(ed == SchematicEditor.XSCHEM)
-            cb.setProperty("sch_value", ed)
-            self.sch_checks[ed] = cb
-            sch_lay.addWidget(cb)
-        sch_group.setLayout(sch_lay)
-        grid.addWidget(sch_group, row, 0, 1, 2)
-        row += 1
-
-        lay_group = QGroupBox("Layout Editor (select one or both)")
-        lay_lay = QHBoxLayout()
-        self.lay_checks = {}
-        for ed in LayoutEditor:
-            cb = QCheckBox(ed.value)
-            cb.setChecked(ed == LayoutEditor.KLAYOUT)
-            cb.setProperty("lay_value", ed)
-            self.lay_checks[ed] = cb
-            lay_lay.addWidget(cb)
-        lay_group.setLayout(lay_lay)
-        grid.addWidget(lay_group, row, 0, 1, 2)
-        row += 1
-
-        mode_group = QGroupBox("Install Mode")
+        mode_group = QGroupBox("Mode")
         mode_lay = QHBoxLayout()
         self.mode_btn_group = QButtonGroup(self)
-        self.mode_new = QRadioButton("New Installation")
+        self.mode_new = QRadioButton("Install")
         self.mode_new.setChecked(True)
         self.mode_change = QRadioButton("Change PDK")
         self.mode_btn_group.addButton(self.mode_new, 0)
         self.mode_btn_group.addButton(self.mode_change, 1)
         mode_lay.addWidget(self.mode_new)
         mode_lay.addWidget(self.mode_change)
-
-        mode_note = QLabel(
-            "'New' runs full tool checks.\n'Change PDK' skips tool checks unless tools are marked for re-check."
-        )
-        mode_note.setObjectName("dim_note")
-        mode_note.setWordWrap(True)
-        mode_lay.addWidget(mode_note)
         mode_group.setLayout(mode_lay)
         grid.addWidget(mode_group, row, 0, 1, 2)
         row += 1
 
-        dir_group = QGroupBox("Installation Directory (Optional)")
+        eda_group = QGroupBox("EDA Configuration")
+        eda_lay = QVBoxLayout()
+        eda_lay.setSpacing(6)
+
+        sim_inner = QHBoxLayout()
+        sim_label = QLabel("Simulators:")
+        sim_label.setFixedWidth(120)
+        sim_inner.addWidget(sim_label)
+        self.sim_checks = {}
+        for sim in Simulator:
+            cb = QCheckBox(sim.value)
+            cb.setChecked(sim == Simulator.NGSPICE)
+            cb.setProperty("sim_value", sim)
+            self.sim_checks[sim] = cb
+            sim_inner.addWidget(cb)
+        sim_inner.addStretch()
+        eda_lay.addLayout(sim_inner)
+
+        sch_inner = QHBoxLayout()
+        sch_label = QLabel("Schematic Editor:")
+        sch_label.setFixedWidth(120)
+        sch_inner.addWidget(sch_label)
+        self.sch_checks = {}
+        for ed in SchematicEditor:
+            cb = QCheckBox(ed.value)
+            cb.setChecked(ed == SchematicEditor.XSCHEM)
+            cb.setProperty("sch_value", ed)
+            self.sch_checks[ed] = cb
+            sch_inner.addWidget(cb)
+        sch_inner.addStretch()
+        eda_lay.addLayout(sch_inner)
+
+        lay_inner = QHBoxLayout()
+        lay_label = QLabel("Layout Editor:")
+        lay_label.setFixedWidth(120)
+        lay_inner.addWidget(lay_label)
+        self.lay_checks = {}
+        for ed in LayoutEditor:
+            cb = QCheckBox(ed.value)
+            cb.setChecked(ed == LayoutEditor.KLAYOUT)
+            cb.setProperty("lay_value", ed)
+            self.lay_checks[ed] = cb
+            lay_inner.addWidget(cb)
+        lay_inner.addStretch()
+        eda_lay.addLayout(lay_inner)
+
+        eda_group.setLayout(eda_lay)
+        grid.addWidget(eda_group, row, 0, 1, 2)
+        row += 1
+
+        dir_group = QGroupBox("Installation Directory")
         dir_lay = QHBoxLayout()
         self.dir_input = QLineEdit()
         self.dir_input.setPlaceholderText("Leave empty to use current PDK location")
@@ -126,7 +125,6 @@ class ChoicePage(QWidget):
         row += 1
 
         root.addLayout(grid)
-
         root.addStretch()
 
     def _on_pdk_changed(self, btn):

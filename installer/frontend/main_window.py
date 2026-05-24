@@ -116,15 +116,22 @@ class MainWindow(QMainWindow):
     def _on_next(self):
         if self.stacked.currentIndex() == 0:
             config = self.choice_page.get_config()
+            missing = []
             if not config.simulators:
-                QMessageBox.warning(self, "No Simulator", "Please select at least one simulator.")
-                return
+                missing.append("simulator")
             if not config.schematic_editors:
-                QMessageBox.warning(self, "No Editor", "Please select at least one schematic editor.")
-                return
+                missing.append("schematic editor")
             if not config.layout_editors:
-                QMessageBox.warning(self, "No Layout", "Please select at least one layout editor.")
-                return
+                missing.append("layout editor")
+            if missing:
+                reply = QMessageBox.warning(
+                    self, "Incomplete Selection",
+                    f"No {'/'.join(missing)} selected. Proceed anyway?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if reply == QMessageBox.No:
+                    return
             if config.install_dir and not os.path.isdir(config.install_dir):
                 try:
                     Path(config.install_dir).mkdir(parents=True, exist_ok=True)
