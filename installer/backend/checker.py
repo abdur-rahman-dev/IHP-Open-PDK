@@ -370,10 +370,6 @@ def build_install_plan(config: InstallConfig) -> InstallPlan:
     if LayoutEditor.MAGIC in config.layout_editors:
         plan.actions.append("Configure Magic layout editor")
 
-    req_file = os.path.join(config.get_pdk_root(), "requirements.txt")
-    if os.path.exists(req_file):
-        plan.actions.append("Install Python dependencies (pip install -r requirements.txt)")
-
     if config.install_dir:
         plan.actions.insert(0, f"Copy PDK from {config.pdk_root} to {config.install_dir}")
         plan.actions.insert(1, f"Update PDK_ROOT to {config.install_dir}")

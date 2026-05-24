@@ -88,10 +88,6 @@ class InstallExecutor(QThread):
             if qucs_ok:
                 self.steps.append(ExecStep("Setup Qucs-S libraries and examples"))
 
-        req_file = os.path.join(pdk_root, "requirements.txt")
-        if os.path.exists(req_file):
-            self.steps.append(ExecStep("Install Python dependencies (pip)"))
-
     def _exec_step(self, idx: int, step: ExecStep) -> bool:
         label = step.label
         cfg = self.plan.config
@@ -165,9 +161,6 @@ class InstallExecutor(QThread):
 
         if label == "Setup Qucs-S libraries and examples":
             return self._setup_qucs(pdk_root, pdk)
-
-        if label.startswith("Install Python dependencies"):
-            return self._pip_install(pdk_root)
 
         return True
 
@@ -327,12 +320,3 @@ class InstallExecutor(QThread):
 
         return overall_ok
 
-    def _pip_install(self, pdk_root: str) -> bool:
-        req_file = os.path.join(pdk_root, "requirements.txt")
-        if not os.path.exists(req_file):
-            self.log_line.emit("  requirements.txt not found")
-            return True
-        cmd = f"pip install -r {req_file}"
-        self.log_line.emit(f"  Running: {cmd}")
-        ok, _ = self._run_cmd(cmd)
-        return ok
