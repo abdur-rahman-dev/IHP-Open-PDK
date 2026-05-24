@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QStackedWidget, QMessageBox,
@@ -12,12 +15,11 @@ from installer.frontend.plan_page import PlanPage
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, theme_manager):
         super().__init__()
         self.config = InstallConfig()
+        self.theme_manager = theme_manager
 
-        import os
-        from pathlib import Path
         script_dir = Path(__file__).resolve().parent
         for candidate in [script_dir, script_dir.parent]:
             if candidate.name == "installer":
@@ -40,23 +42,35 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(20, 16, 20, 16)
         root.setSpacing(8)
 
+        header_row = QHBoxLayout()
+
+        header_spacer = QLabel("")
+        header_spacer.setFixedWidth(108)
+        header_row.addWidget(header_spacer)
+
         header = QLabel("IHP-Open-PDK Installer")
         header.setFont(QFont("Sans", 16, QFont.Bold))
-        header.setStyleSheet("color: #00509E;")
+        header.setObjectName("header_title")
         header.setAlignment(Qt.AlignCenter)
-        root.addWidget(header)
+        header_row.addWidget(header, 1)
+
+        self.theme_combo = self.theme_manager.create_combo(self)
+        self.theme_combo.setFixedWidth(108)
+        header_row.addWidget(self.theme_combo)
+
+        root.addLayout(header_row)
 
         sep = QLabel("")
         sep.setFixedHeight(2)
-        sep.setStyleSheet("background-color: #00509E;")
+        sep.setObjectName("separator")
         root.addWidget(sep)
 
         self.stacked = QStackedWidget()
         root.addWidget(self.stacked, 1)
 
         self.choice_page = ChoicePage(self.config)
-        self.check_page = CheckPage(self.config)
-        self.plan_page = PlanPage()
+        self.check_page = CheckPage(self.config, self.theme_manager)
+        self.plan_page = PlanPage(self.theme_manager)
 
         self.stacked.addWidget(self.choice_page)
         self.stacked.addWidget(self.check_page)
@@ -67,8 +81,8 @@ class MainWindow(QMainWindow):
         nav_lay.addWidget(self.nav_left)
 
         self.step_label = QLabel("Step 1 of 3: Configuration")
+        self.step_label.setObjectName("step_label")
         self.step_label.setAlignment(Qt.AlignCenter)
-        self.step_label.setStyleSheet("color: #666; font-size: 11px;")
         nav_lay.addWidget(self.step_label)
 
         self.next_btn = QPushButton("Next >")
@@ -114,7 +128,6 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "No Layout", "Please select at least one layout editor.")
                 return
             if config.install_dir and not os.path.isdir(config.install_dir):
-                from pathlib import Path
                 try:
                     Path(config.install_dir).mkdir(parents=True, exist_ok=True)
                 except OSError:
@@ -137,6 +150,3 @@ class MainWindow(QMainWindow):
     def _go_to_check(self):
         self.stacked.setCurrentIndex(1)
         self._update_nav()
-
-
-import os

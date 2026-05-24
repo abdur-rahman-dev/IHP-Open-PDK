@@ -8,6 +8,7 @@ sys.path.insert(0, PDK_ROOT)
 
 
 def main():
+    import argparse
     parser = argparse.ArgumentParser(
         description="IHP-Open-PDK Installer",
     )
@@ -28,16 +29,18 @@ def main():
 
     from PySide6.QtWidgets import QApplication
     from installer.frontend.main_window import MainWindow
+    from installer.frontend.theme import ThemeManager
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
 
-    window = MainWindow()
+    theme_manager = ThemeManager(app, initial="system")
+
+    window = MainWindow(theme_manager)
     window.show()
 
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    import argparse
     main()
