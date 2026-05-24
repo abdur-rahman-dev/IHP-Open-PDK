@@ -36,8 +36,8 @@ class ChoicePage(QWidget):
         grid.setVerticalSpacing(12)
         row = 0
 
-        pdk_group = QGroupBox("PDK Selection")
-        pdk_lay = QVBoxLayout()
+        pdk_group = QGroupBox("PDK Selection (select one)")
+        pdk_lay = QHBoxLayout()
         self.pdk_btn_group = QButtonGroup(self)
         for i, (val, label, default) in enumerate(PDK_OPTIONS):
             rb = QRadioButton(label)
@@ -126,15 +126,6 @@ class ChoicePage(QWidget):
         row += 1
 
         root.addLayout(grid)
-
-        note = QLabel(
-            "Note: The installation plan will be generated after clicking Next. "
-            "No changes will be made until you confirm."
-        )
-        note.setObjectName("dim_note")
-        note.setWordWrap(True)
-        note.setAlignment(Qt.AlignCenter)
-        root.addWidget(note)
 
         root.addStretch()
 
