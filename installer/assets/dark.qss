@@ -118,6 +118,44 @@ QPushButton#browse_btn:hover {
     background-color: @bg_alt@;
 }
 
+QPushButton#install_btn {
+    background-color: @btn_install_bg@;
+    color: @btn_install_text@;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 12px;
+    min-height: 20px;
+}
+
+QPushButton#install_btn:hover {
+    background-color: @btn_install_hover@;
+}
+
+QPushButton#install_btn:disabled {
+    background-color: @border@;
+    color: @text_dim@;
+}
+
+QPushButton#close_btn {
+    background-color: @btn_close_bg@;
+    color: @btn_close_text@;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 12px;
+    min-height: 20px;
+}
+
+QPushButton#close_btn:hover {
+    background-color: @btn_close_hover@;
+}
+
+QPushButton#close_btn:disabled {
+    background-color: @border@;
+    color: @text_dim@;
+}
+
 QLineEdit {
     background-color: @input_bg@;
     color: @text@;

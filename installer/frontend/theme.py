@@ -36,6 +36,12 @@ LIGHT_COLORS = {
     "separator": "#00509E",
     "scrollbar": "#C1C1C1",
     "scrollbar_hover": "#A0A0A0",
+    "btn_install_bg": "#2E7D32",
+    "btn_install_hover": "#1B5E20",
+    "btn_install_text": "#FFFFFF",
+    "btn_close_bg": "#C62828",
+    "btn_close_hover": "#B71C1C",
+    "btn_close_text": "#FFFFFF",
 }
 
 DARK_COLORS = {
@@ -67,6 +73,12 @@ DARK_COLORS = {
     "separator": "#89B4FA",
     "scrollbar": "#45475A",
     "scrollbar_hover": "#585B70",
+    "btn_install_bg": "#4CAF50",
+    "btn_install_hover": "#66BB6A",
+    "btn_install_text": "#1E1E2E",
+    "btn_close_bg": "#EF5350",
+    "btn_close_hover": "#F38BA8",
+    "btn_close_text": "#1E1E2E",
 }
 
 _THEMES = {
