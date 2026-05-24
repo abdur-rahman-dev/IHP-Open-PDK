@@ -191,3 +191,18 @@ class InstallPlan:
             lines += ["", f"**Result: FAILED**"]
 
         return "\n".join(lines)
+
+
+class ExecStepStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    DONE = "done"
+    SKIPPED = "skipped"
+    FAILED = "failed"
+
+
+@dataclass
+class ExecStep:
+    label: str
+    status: ExecStepStatus = ExecStepStatus.PENDING
+    detail: str = ""

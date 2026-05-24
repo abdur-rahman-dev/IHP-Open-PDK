@@ -1,0 +1,338 @@
+import os
+import shutil
+import subprocess
+
+from PySide6.QtCore import QThread, Signal
+
+from .models import InstallPlan, ExecStep, ExecStepStatus
+from .checker import OSDI_MODELS, XYCE_MODELS, is_program_installed
+
+
+class InstallExecutor(QThread):
+    step_started = Signal(int, str)
+    step_finished = Signal(int, str, bool)
+    all_done = Signal(bool)
+    log_line = Signal(str)
+
+    def __init__(self, plan: InstallPlan):
+        super().__init__()
+        self.plan = plan
+        self.steps: list[ExecStep] = []
+        self._cancelled = False
+
+    def cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        self._build_steps()
+        for i, step in enumerate(self.steps):
+            if self._cancelled:
+                break
+            self.step_started.emit(i, step.label)
+            step.status = ExecStepStatus.RUNNING
+            try:
+                ok = self._exec_step(i, step)
+                step.status = ExecStepStatus.DONE if ok else ExecStepStatus.FAILED
+                self.step_finished.emit(i, step.label, ok)
+                if not ok:
+                    step.detail = step.detail or "Failed"
+            except Exception as e:
+                step.status = ExecStepStatus.FAILED
+                step.detail = str(e)
+                self.step_finished.emit(i, step.label, False)
+        any_fail = any(s.status == ExecStepStatus.FAILED for s in self.steps)
+        self.all_done.emit(not any_fail)
+
+    def _build_steps(self):
+        cfg = self.plan.config
+        pdk_root = self.plan.pdk_root or cfg.get_pdk_root()
+        pdk = cfg.pdk.value
+
+        if cfg.install_dir and cfg.install_dir != pdk_root:
+            self.steps.append(ExecStep(f"Copy PDK to {cfg.install_dir}"))
+            self.steps.append(ExecStep(f"Update PDK_ROOT"))
+
+        self.steps.append(ExecStep("Set environment variables in .bashrc"))
+        self.steps.append(ExecStep("Create .spiceinit symlink"))
+
+        openvaf_tool = next(
+            (t for t in self.plan.tools if t.name in ("openvaf", "openvaf-r")),
+            None,
+        )
+        if openvaf_tool and openvaf_tool.installed:
+            for model in OSDI_MODELS:
+                osdi_path = os.path.join(
+                    pdk_root, pdk, "libs.tech", "ngspice", "osdi", f"{model['name']}.osdi"
+                )
+                if not os.path.exists(osdi_path):
+                    self.steps.append(ExecStep(f"Compile OSDI: {model['name']}.osdi"))
+
+        from .checker import Simulator
+        if Simulator.XYCE in cfg.simulators:
+            xyce_ok = any(t.name == "Xyce" and t.installed for t in self.plan.tools)
+            bxp_ok = any(t.name == "buildxyceplugin" and t.installed for t in self.plan.tools)
+            if xyce_ok and bxp_ok:
+                for model in XYCE_MODELS:
+                    self.steps.append(ExecStep(f"Compile Xyce plugin: {model['name']}"))
+
+        if Simulator.GNUCAP in cfg.simulators:
+            gnucap_ok = any(t.name == "gnucap" and t.installed for t in self.plan.tools)
+            mg_ok = any(t.name == "gnucap-mg-vams" and t.installed for t in self.plan.tools)
+            if gnucap_ok and mg_ok:
+                for model in OSDI_MODELS:
+                    self.steps.append(ExecStep(f"Compile gnucap plugin: {model['name']}"))
+
+        from .checker import SchematicEditor
+        if SchematicEditor.QUCS_S in cfg.schematic_editors:
+            qucs_ok = any(t.name == "qucs-s" and t.installed for t in self.plan.tools)
+            if qucs_ok:
+                self.steps.append(ExecStep("Setup Qucs-S libraries and examples"))
+
+        req_file = os.path.join(pdk_root, "requirements.txt")
+        if os.path.exists(req_file):
+            self.steps.append(ExecStep("Install Python dependencies (pip)"))
+
+    def _exec_step(self, idx: int, step: ExecStep) -> bool:
+        label = step.label
+        cfg = self.plan.config
+        pdk_root = self.plan.pdk_root or cfg.get_pdk_root()
+        pdk = cfg.pdk.value
+        home = os.environ.get("HOME", "")
+
+        if label.startswith("Copy PDK to"):
+            dest = cfg.install_dir
+            if not dest:
+                return True
+            if os.path.exists(dest):
+                sub = os.path.join(dest, "ihp-sg13g2")
+                if os.path.exists(sub):
+                    self.log_line.emit(f"  Destination already exists, skipping copy")
+                    return True
+            try:
+                shutil.copytree(pdk_root, dest, symlinks=True, dirs_exist_ok=True)
+                self.log_line.emit(f"  Copied {pdk_root} -> {dest}")
+                return True
+            except Exception as e:
+                self.log_line.emit(f"  Copy failed: {e}")
+                return False
+
+        if label == "Update PDK_ROOT":
+            if not cfg.install_dir:
+                return True
+            os.environ["PDK_ROOT"] = cfg.install_dir
+            self.plan.pdk_root = cfg.install_dir
+            self.log_line.emit(f"  PDK_ROOT updated to {cfg.install_dir}")
+            pdk_root = cfg.install_dir
+            return True
+
+        if label == "Set environment variables in .bashrc":
+            return self._write_env(pdk_root, pdk)
+
+        if label == "Create .spiceinit symlink":
+            src = os.path.join(pdk_root, pdk, "libs.tech", "ngspice", ".spiceinit")
+            dst = os.path.join(home, ".spiceinit")
+            if os.path.islink(dst):
+                try:
+                    if os.path.exists(src) and os.path.exists(os.readlink(dst)):
+                        if os.path.samefile(os.readlink(dst), src):
+                            self.log_line.emit("  .spiceinit already valid")
+                            return True
+                except OSError:
+                    pass
+                os.remove(dst)
+            elif os.path.exists(dst):
+                self.log_line.emit("  .spiceinit exists but is not a symlink, skipping")
+                return True
+            try:
+                os.symlink(src, dst)
+                self.log_line.emit(f"  Created symlink: {dst} -> {src}")
+                return True
+            except OSError as e:
+                self.log_line.emit(f"  Failed: {e}")
+                return False
+
+        if label.startswith("Compile OSDI:"):
+            model_name = label.split(": ")[1].replace(".osdi", "")
+            return self._compile_osdi(pdk_root, pdk, model_name)
+
+        if label.startswith("Compile Xyce plugin:"):
+            model_name = label.split(": ")[1]
+            return self._compile_xyce(pdk_root, pdk, model_name)
+
+        if label.startswith("Compile gnucap plugin:"):
+            model_name = label.split(": ")[1]
+            return self._compile_gnucap(pdk_root, pdk, model_name)
+
+        if label == "Setup Qucs-S libraries and examples":
+            return self._setup_qucs(pdk_root, pdk)
+
+        if label.startswith("Install Python dependencies"):
+            return self._pip_install(pdk_root)
+
+        return True
+
+    def _write_env(self, pdk_root: str, pdk: str) -> bool:
+        home = os.environ.get("HOME", "")
+        bashrc = os.path.join(home, ".bashrc")
+        if not os.path.exists(bashrc):
+            self.log_line.emit("  .bashrc not found")
+            return False
+
+        with open(bashrc, "r") as f:
+            content = f.read()
+
+        marker = "# >>> IHP-Open-PDK >>>"
+        end_marker = "# <<< IHP-Open-PDK <<<"
+        if marker in content:
+            self.log_line.emit("  IHP-Open-PDK block already in .bashrc")
+            return True
+
+        lines = [f'export PDK_ROOT="{pdk_root}"']
+        lines.append(f'export PDK="{pdk}"')
+
+        from .checker import LayoutEditor
+        if LayoutEditor.KLAYOUT in self.plan.config.layout_editors:
+            klayout_path = f"$HOME/.klayout:{pdk_root}/{pdk}/libs.tech/klayout"
+            lines.append(f'export KLAYOUT_PATH="{klayout_path}"')
+            lines.append(f'export KLAYOUT_HOME="$HOME/.klayout"')
+
+        block = f"\n{marker}\n" + "\n".join(lines) + f"\n{end_marker}\n"
+
+        with open(bashrc, "a") as f:
+            f.write(block)
+
+        os.environ["PDK_ROOT"] = pdk_root
+        os.environ["PDK"] = pdk
+
+        self.log_line.emit(f"  Appended {len(lines)} env vars to .bashrc")
+        return True
+
+    def _run_cmd(self, cmd: str, cwd: str = None) -> tuple[bool, str]:
+        try:
+            result = subprocess.run(
+                cmd, cwd=cwd, shell=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, timeout=600,
+            )
+            output = result.stdout.strip()
+            if output:
+                for line in output.split("\n")[:5]:
+                    self.log_line.emit(f"  {line}")
+            return result.returncode == 0, output
+        except subprocess.TimeoutExpired:
+            self.log_line.emit("  Command timed out")
+            return False, "timeout"
+        except Exception as e:
+            self.log_line.emit(f"  Error: {e}")
+            return False, str(e)
+
+    def _compile_osdi(self, pdk_root: str, pdk: str, model_name: str) -> bool:
+        va_dir = os.path.join(pdk_root, pdk, "libs.tech", "verilog-a")
+        osdi_dir = os.path.join(pdk_root, pdk, "libs.tech", "ngspice", "osdi")
+        os.makedirs(osdi_dir, exist_ok=True)
+
+        model_map = {m["name"]: m for m in OSDI_MODELS}
+        model = model_map.get(model_name)
+        if not model:
+            self.log_line.emit(f"  Unknown model: {model_name}")
+            return False
+
+        compiler = "openvaf-r" if is_program_installed("openvaf-r") else "openvaf"
+        src_dir = os.path.join(va_dir, model["src_dir"])
+        cmd = f"{compiler} -D__NGSPICE__ {model['va_file']} --output {osdi_dir}/{model_name}.osdi"
+        self.log_line.emit(f"  Running: {cmd}")
+        ok, _ = self._run_cmd(cmd, cwd=src_dir)
+        if ok:
+            self.log_line.emit(f"  Compiled {model_name}.osdi")
+        return ok
+
+    def _compile_xyce(self, pdk_root: str, pdk: str, model_name: str) -> bool:
+        va_dir = os.path.join(pdk_root, pdk, "libs.tech", "verilog-a")
+        xyce_dir = os.path.join(pdk_root, pdk, "libs.tech", "xyce", "plugins")
+        os.makedirs(xyce_dir, exist_ok=True)
+
+        model_map = {m["name"]: m for m in XYCE_MODELS}
+        model = model_map.get(model_name)
+        if not model:
+            return False
+
+        src_dir = os.path.join(va_dir, model["src_dir"])
+        cmd = f"buildxyceplugin {model['va_file']} ../../xyce/plugins"
+        self.log_line.emit(f"  Running: {cmd}")
+        ok, _ = self._run_cmd(cmd, cwd=src_dir)
+        return ok
+
+    def _compile_gnucap(self, pdk_root: str, pdk: str, model_name: str) -> bool:
+        va_dir = os.path.join(pdk_root, pdk, "libs.tech", "verilog-a")
+        gnucap_dir = os.path.join(pdk_root, pdk, "libs.tech", "gnucap")
+        os.makedirs(gnucap_dir, exist_ok=True)
+
+        model_map = {m["name"]: m for m in OSDI_MODELS}
+        model = model_map.get(model_name)
+        if not model:
+            return False
+
+        src_dir = os.path.join(va_dir, model["src_dir"])
+        out_so = os.path.join(gnucap_dir, f"{model_name}.so")
+        cmd = (f"gnucap-mg-vams --cc {model['va_file']} | "
+               f"g++ -xc++ $(gnucap-conf --cppflags) -fPIC -shared - -o {out_so}")
+        self.log_line.emit(f"  Running: {cmd}")
+        ok, _ = self._run_cmd(cmd, cwd=src_dir)
+        return ok
+
+    def _setup_qucs(self, pdk_root: str, pdk: str) -> bool:
+        home = os.environ.get("HOME", "")
+        lib_src = os.path.join(pdk_root, pdk, "libs.tech", "qucs-s", "user_lib")
+        examples_src = os.path.join(pdk_root, pdk, "libs.tech", "qucs-s", "examples")
+        overall_ok = True
+
+        for ws in ["/.qucs/", "/QucsWorkspace/"]:
+            ws_dir = os.path.join(home, ws.strip("/"))
+            user_lib_dst = os.path.join(ws_dir, "user_lib")
+
+            if os.path.isdir(lib_src):
+                os.makedirs(user_lib_dst, exist_ok=True)
+                for fname in os.listdir(lib_src):
+                    src = os.path.join(lib_src, fname)
+                    dst = os.path.join(user_lib_dst, fname)
+                    if os.path.isfile(src) and not os.path.exists(dst):
+                        try:
+                            os.symlink(src, dst)
+                        except OSError:
+                            pass
+                self.log_line.emit(f"  Linked user_lib -> {user_lib_dst}")
+
+            examples_dst = os.path.join(ws_dir, "IHP-Open-PDK-SG13G2-Examples_prj")
+            if os.path.isdir(examples_src) and not os.path.exists(examples_dst):
+                try:
+                    shutil.copytree(examples_src, examples_dst)
+                    if is_program_installed("sed"):
+                        ws_name = ws.strip("/")
+                        subprocess.run(
+                            f"sed -i 's/<qucs_workspace>/{ws_name}/' *.sch",
+                            cwd=examples_dst, shell=True, check=False,
+                        )
+                    self.log_line.emit(f"  Copied examples -> {examples_dst}")
+                except Exception as e:
+                    self.log_line.emit(f"  Examples copy failed: {e}")
+                    overall_ok = False
+
+            pdk_symlink = os.path.join(ws_dir, "IHP-Open-PDK")
+            if not os.path.exists(pdk_symlink):
+                try:
+                    os.symlink(pdk_root, pdk_symlink)
+                    self.log_line.emit(f"  Created PDK symlink: {pdk_symlink}")
+                except OSError:
+                    pass
+
+        return overall_ok
+
+    def _pip_install(self, pdk_root: str) -> bool:
+        req_file = os.path.join(pdk_root, "requirements.txt")
+        if not os.path.exists(req_file):
+            self.log_line.emit("  requirements.txt not found")
+            return True
+        cmd = f"pip install -r {req_file}"
+        self.log_line.emit(f"  Running: {cmd}")
+        ok, _ = self._run_cmd(cmd)
+        return ok
