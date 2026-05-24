@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -197,11 +198,16 @@ class MainWindow(QMainWindow):
             self.back_btn.setEnabled(enabled)
 
     def closeEvent(self, event: QCloseEvent):
-        if self.check_page.executor and self.check_page.executor.isRunning():
-            self.check_page.executor.cancel()
-            self.check_page.executor.wait(3000)
-        if hasattr(self.check_page, "worker") and self.check_page.worker and self.check_page.worker.isRunning():
-            self.check_page.worker.quit()
-            self.check_page.worker.wait(2000)
-        QApplication.instance().quit()
+        cp = self.check_page
+        if cp.executor and cp.executor.isRunning():
+            cp.executor.cancel()
+            cp.executor.wait(2000)
+            cp.executor.terminate()
+            cp.executor.wait(1000)
+        if cp.worker and cp.worker.isRunning():
+            cp.worker.quit()
+            cp.worker.wait(2000)
+            cp.worker.terminate()
+            cp.worker.wait(1000)
         event.accept()
+        sys.exit(0)

@@ -276,7 +276,7 @@ class CheckPage(QWidget):
         dialog_close_btn.clicked.connect(dialog.accept)
         dialog_layout.addWidget(dialog_close_btn)
 
-        executor = InstallExecutor(self.plan)
+        self.executor = InstallExecutor(self.plan)
 
         def on_step_started(idx, label):
             dialog_log.append(f"[{idx+1}] {label}...")
@@ -284,9 +284,9 @@ class CheckPage(QWidget):
 
         def on_step_finished(idx, label, ok):
             dialog_log.append(f"    -> {'OK' if ok else 'FAILED'}")
-            total = len(executor.steps)
+            total = len(self.executor.steps)
             done = sum(
-                1 for s in executor.steps
+                1 for s in self.executor.steps
                 if s.status in (ExecStepStatus.DONE, ExecStepStatus.FAILED)
             )
             pct = int((done / total) * 100) if total > 0 else 100
@@ -312,11 +312,11 @@ class CheckPage(QWidget):
             self.install_result_label.setStyle(self.install_result_label.style())
             self.install_result_label.show()
 
-        executor.step_started.connect(on_step_started)
-        executor.step_finished.connect(on_step_finished)
-        executor.all_done.connect(on_all_done)
-        executor.log_line.connect(on_log)
-        executor.start()
+        self.executor.step_started.connect(on_step_started)
+        self.executor.step_finished.connect(on_step_finished)
+        self.executor.all_done.connect(on_all_done)
+        self.executor.log_line.connect(on_log)
+        self.executor.start()
 
         dialog.exec()
 
