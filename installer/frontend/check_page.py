@@ -60,11 +60,6 @@ class CheckPage(QWidget):
         root = QVBoxLayout(self)
         root.setSpacing(12)
 
-        self.title = QLabel("Check & Install")
-        self.title.setObjectName("page_title")
-        self.title.setAlignment(Qt.AlignCenter)
-        root.addWidget(self.title)
-
         self.result_label = QLabel("")
         self.result_label.setAlignment(Qt.AlignCenter)
         self.result_label.hide()
