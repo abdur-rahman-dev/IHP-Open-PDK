@@ -2,8 +2,8 @@ import os
 from pathlib import Path
 
 from PySide6.QtWidgets import QComboBox, QApplication
-from PySide6.QtGui import QColor, QPalette
-from PySide6.QtCore import Signal, QObject
+from PySide6.QtGui import QColor, QPalette, QPixmap, QPainter, QPolygonF
+from PySide6.QtCore import Signal, QObject, Qt, QPointF
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 
@@ -145,6 +145,23 @@ def detect_system_theme() -> str:
     return "light"
 
 
+def _create_arrow_png(color_hex: str, path: Path):
+    pm = QPixmap(12, 8)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setBrush(QColor(color_hex))
+    p.setPen(Qt.PenStyle.NoPen)
+    triangle = QPolygonF([
+        QPointF(1, 1),
+        QPointF(11, 1),
+        QPointF(6, 7),
+    ])
+    p.drawPolygon(triangle)
+    p.end()
+    pm.save(str(path), "PNG")
+
+
 class ThemeManager(QObject):
     theme_changed = Signal(str)
 
@@ -195,10 +212,15 @@ class ThemeManager(QObject):
         self._current_theme = theme_name
         colors = _THEMES.get(theme_name, LIGHT_COLORS)
 
+        arrow_path = ASSETS_DIR / ".arrow.png"
+        _create_arrow_png(colors["text_secondary"], arrow_path)
+        extended = dict(colors)
+        extended["arrow_icon"] = arrow_path.as_posix()
+
         if theme_name == "dark":
-            qss = _resolve_qss(self._qss_template_dark, colors)
+            qss = _resolve_qss(self._qss_template_dark, extended)
         else:
-            qss = _resolve_qss(self._qss_template_light, colors)
+            qss = _resolve_qss(self._qss_template_light, extended)
 
         self.app.setStyleSheet(qss)
 
