@@ -4,7 +4,7 @@ QMainWindow {
 }
 
 QWidget {
-    background-color: transparent;
+    background-color: @bg@;
     color: @text@;
     font-family: "Sans", "Segoe UI", sans-serif;
     font-size: 12px;

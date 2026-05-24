@@ -201,4 +201,21 @@ class ThemeManager(QObject):
             qss = _resolve_qss(self._qss_template_light, colors)
 
         self.app.setStyleSheet(qss)
+
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, QColor(colors["bg"]))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor(colors["text"]))
+        palette.setColor(QPalette.ColorRole.Base, QColor(colors["input_bg"]))
+        palette.setColor(QPalette.ColorRole.AlternateBase, QColor(colors["bg_alt"]))
+        palette.setColor(QPalette.ColorRole.Text, QColor(colors["text"]))
+        palette.setColor(QPalette.ColorRole.Button, QColor(colors["surface"]))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor(colors["text"]))
+        palette.setColor(QPalette.ColorRole.BrightText, QColor(colors["text"]))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(colors["brand"]))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(colors["btn_text"]))
+        palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(colors["surface"]))
+        palette.setColor(QPalette.ColorRole.ToolTipText, QColor(colors["text"]))
+        palette.setColor(QPalette.ColorRole.PlaceholderText, QColor(colors["text_dim"]))
+        self.app.setPalette(palette)
+
         self.theme_changed.emit(theme_name)
