@@ -5,7 +5,7 @@ import subprocess
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QProgressBar,
-    QGroupBox, QTextEdit, QMessageBox, QFileDialog,
+    QGroupBox, QTextEdit, QMessageBox, QFileDialog, QDialog,
 )
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QColor
@@ -261,61 +261,79 @@ class CheckPage(QWidget):
 
         self.install_btn.setEnabled(False)
         self.back_btn.setEnabled(False)
-        self.exec_log.show()
-        self.exec_log.clear()
-        self.install_result_label.hide()
         self.hint_label.hide()
 
-        self.progress_bar.show()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Installing...")
-        self.status_label.setText("Installing... please wait.")
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Installation Progress")
+        dialog.setMinimumSize(600, 400)
+        dialog_layout = QVBoxLayout(dialog)
 
-        self.executor = InstallExecutor(self.plan)
-        self.executor.step_started.connect(self._on_step_started)
-        self.executor.step_finished.connect(self._on_step_finished)
-        self.executor.all_done.connect(self._on_install_done)
-        self.executor.log_line.connect(self._on_log)
-        self.executor.start()
+        dialog_progress = QProgressBar()
+        dialog_progress.setRange(0, 100)
+        dialog_progress.setValue(0)
+        dialog_progress.setFormat("Installing...")
+        dialog_layout.addWidget(dialog_progress)
 
-    def _on_step_started(self, idx: int, label: str):
-        self.exec_log.append(f"[{idx+1}] {label}...")
-        self.progress_bar.setFormat(f"Step {idx+1}: {label}")
+        dialog_log = QTextEdit()
+        dialog_log.setReadOnly(True)
+        log_font = dialog_log.font()
+        log_font.setFamily("monospace")
+        log_font.setPointSize(9)
+        dialog_log.setFont(log_font)
+        dialog_layout.addWidget(dialog_log, 1)
 
-    def _on_step_finished(self, idx: int, label: str, ok: bool):
-        status = "OK" if ok else "FAILED"
-        self.exec_log.append(f"    -> {status}")
+        dialog_status = QLabel("Installing... please wait.")
+        dialog_status.setAlignment(Qt.AlignCenter)
+        dialog_layout.addWidget(dialog_status)
 
-        if self.executor:
-            total = len(self.executor.steps)
+        dialog_close_btn = QPushButton("Close")
+        dialog_close_btn.setEnabled(False)
+        dialog_close_btn.clicked.connect(dialog.accept)
+        dialog_layout.addWidget(dialog_close_btn)
+
+        executor = InstallExecutor(self.plan)
+
+        def on_step_started(idx, label):
+            dialog_log.append(f"[{idx+1}] {label}...")
+            dialog_progress.setFormat(f"Step {idx+1}: {label}")
+
+        def on_step_finished(idx, label, ok):
+            dialog_log.append(f"    -> {'OK' if ok else 'FAILED'}")
+            total = len(executor.steps)
             done = sum(
-                1 for s in self.executor.steps
+                1 for s in executor.steps
                 if s.status in (ExecStepStatus.DONE, ExecStepStatus.FAILED)
             )
             pct = int((done / total) * 100) if total > 0 else 100
-            self.progress_bar.setValue(pct)
+            dialog_progress.setValue(pct)
 
-    def _on_log(self, msg: str):
-        self.exec_log.append(msg)
+        def on_log(msg):
+            dialog_log.append(msg)
 
-    def _on_install_done(self, success: bool):
-        self.progress_bar.setValue(100)
-        self.back_btn.setEnabled(True)
+        def on_all_done(success):
+            dialog_progress.setValue(100)
+            dialog_close_btn.setEnabled(True)
+            self.back_btn.setEnabled(True)
+            if success:
+                dialog_status.setText("Installation completed successfully!")
+                dialog_status.setStyleSheet("color: green; font-weight: bold;")
+                dialog_progress.setFormat("Done")
+            else:
+                dialog_status.setText("Installation completed with errors. See log above.")
+                dialog_status.setStyleSheet("color: red; font-weight: bold;")
+                dialog_progress.setFormat("Done (with errors)")
+            self.install_result_label.setText(dialog_status.text())
+            self.install_result_label.setObjectName("result_ok" if success else "result_error")
+            self.install_result_label.setStyle(self.install_result_label.style())
+            self.install_result_label.show()
 
-        if success:
-            self.install_result_label.setText("Installation completed successfully!")
-            self.install_result_label.setObjectName("result_ok")
-            self.status_label.setText("Installation complete.")
-            self.progress_bar.setFormat("Done")
-        else:
-            self.install_result_label.setText("Installation completed with errors. See log above.")
-            self.install_result_label.setObjectName("result_error")
-            self.status_label.setText("Some steps failed.")
-            self.progress_bar.setFormat("Done (with errors)")
+        executor.step_started.connect(on_step_started)
+        executor.step_finished.connect(on_step_finished)
+        executor.all_done.connect(on_all_done)
+        executor.log_line.connect(on_log)
+        executor.start()
 
-        self.install_result_label.setStyle(self.install_result_label.style())
-        self.install_result_label.show()
+        dialog.exec()
 
     def _get_status_color(self, status: ToolStatusEnum) -> QColor:
         if status == ToolStatusEnum.OK:
