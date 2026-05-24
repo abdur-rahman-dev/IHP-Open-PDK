@@ -114,6 +114,34 @@ def detect_system_theme() -> str:
         except Exception:
             pass
 
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").lower()
+    if "gnome" in desktop:
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=3,
+            )
+            if result.returncode == 0:
+                val = result.stdout.strip().strip("'")
+                if "dark" in val.lower():
+                    return "dark"
+                if "light" in val.lower() or val == "default":
+                    return "light"
+        except Exception:
+            pass
+
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["gsettings", "get", "org.gnome.desktop.interface", "gtk-theme"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=3,
+        )
+        if result.returncode == 0 and "dark" in result.stdout.lower():
+            return "dark"
+    except Exception:
+        pass
+
     return "light"
 
 
