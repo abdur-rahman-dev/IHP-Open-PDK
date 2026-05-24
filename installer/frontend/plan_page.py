@@ -3,7 +3,7 @@ import datetime
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QFileDialog, QGroupBox,
+    QTextEdit, QFileDialog,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -13,8 +13,9 @@ from installer.backend.models import InstallPlan
 class PlanPage(QWidget):
     back_requested = Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, theme_manager, parent=None):
         super().__init__(parent)
+        self.theme_manager = theme_manager
         self.plan: InstallPlan | None = None
         self._build_ui()
 
@@ -23,15 +24,15 @@ class PlanPage(QWidget):
         root.setSpacing(12)
 
         self.title = QLabel("Installation Plan")
-        self.title.setStyleSheet("font-size: 18px; font-weight: bold; color: #00509E;")
+        self.title.setObjectName("page_title")
         self.title.setAlignment(Qt.AlignCenter)
         root.addWidget(self.title)
 
         summary = QLabel(
             "Review the installation plan below. Click 'Save Plan' to export as Markdown."
         )
+        summary.setObjectName("subtitle")
         summary.setAlignment(Qt.AlignCenter)
-        summary.setStyleSheet("color: #666; font-size: 11px;")
         root.addWidget(summary)
 
         self.plan_view = QTextEdit()
@@ -59,9 +60,29 @@ class PlanPage(QWidget):
         self.plan_view.setHtml(html)
 
     def _md_to_html(self, md: str) -> str:
+        colors = {
+            "brand": self.theme_manager.get_color("brand").name(),
+            "text": self.theme_manager.get_color("text").name(),
+            "bg": self.theme_manager.get_color("surface").name(),
+            "bg_alt": self.theme_manager.get_color("bg_alt").name(),
+            "border": self.theme_manager.get_color("border").name(),
+            "status_ok": self.theme_manager.get_color("status_ok").name(),
+            "status_warn": self.theme_manager.get_color("status_warn").name(),
+            "status_error": self.theme_manager.get_color("status_error").name(),
+        }
+
         lines = md.split("\n")
-        html_parts = []
-        in_table = False
+        html_parts = [
+            f"<style>"
+            f"body {{ color: {colors['text']}; background: {colors['bg']}; font-family: monospace; }}"
+            f"table {{ border-collapse: collapse; width: 100%; }}"
+            f"th {{ background-color: {colors['brand']}; color: white; padding: 6px 8px; text-align: left; }}"
+            f"td {{ padding: 4px 8px; border-bottom: 1px solid {colors['border']}; }}"
+            f"tr:nth-child(even) {{ background-color: {colors['bg_alt']}; }}"
+            f"h2 {{ color: {colors['brand']}; }}"
+            f"h3 {{ color: {colors['brand']}; }}"
+            f"</style>",
+        ]
         in_list = False
 
         for line in lines:
@@ -70,17 +91,11 @@ class PlanPage(QWidget):
                 if in_list:
                     html_parts.append("</ul>")
                     in_list = False
-                if in_table:
-                    html_parts.append("</table>")
-                    in_table = False
                 html_parts.append(f"<h2>{stripped[2:]}</h2>")
             elif stripped.startswith("## "):
                 if in_list:
                     html_parts.append("</ul>")
                     in_list = False
-                if in_table:
-                    html_parts.append("</table>")
-                    in_table = False
                 html_parts.append(f"<h3>{stripped[3:]}</h3>")
             elif stripped.startswith("**") and stripped.endswith("**"):
                 html_parts.append(f"<p><b>{stripped[2:-2]}</b></p>")
@@ -88,20 +103,10 @@ class PlanPage(QWidget):
                 continue
             elif stripped.startswith("|"):
                 cells = [c.strip() for c in stripped.split("|")[1:-1]]
-                if not in_table:
-                    html_parts.append(
-                        "<table border='1' cellpadding='4' cellspacing='0' "
-                        "style='border-collapse:collapse; width:100%; font-size:10pt;'>"
-                    )
-                    in_table = True
-                    tag = "th"
-                    bg = " style='background-color: #00509E; color: white;'"
-                else:
-                    tag = "td"
-                    bg = ""
+                tag = "td"
                 row_html = "<tr>"
                 for cell in cells:
-                    row_html += f"<{tag}{bg}>{cell}</{tag}>"
+                    row_html += f"<{tag}>{cell}</{tag}>"
                 row_html += "</tr>"
                 html_parts.append(row_html)
             elif stripped.startswith("- "):
@@ -121,8 +126,6 @@ class PlanPage(QWidget):
                     in_list = False
                 html_parts.append(f"<p>{stripped}</p>")
 
-        if in_table:
-            html_parts.append("</table>")
         if in_list:
             html_parts.append("</ul>")
 

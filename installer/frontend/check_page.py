@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QProgressBar,
-    QGroupBox, QTextEdit,
+    QGroupBox,
 )
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QColor
@@ -31,9 +31,10 @@ class CheckPage(QWidget):
     next_requested = Signal()
     back_requested = Signal()
 
-    def __init__(self, config: InstallConfig, parent=None):
+    def __init__(self, config: InstallConfig, theme_manager, parent=None):
         super().__init__(parent)
         self.config = config
+        self.theme_manager = theme_manager
         self.plan: InstallPlan | None = None
         self._build_ui()
 
@@ -42,7 +43,7 @@ class CheckPage(QWidget):
         root.setSpacing(12)
 
         self.title = QLabel("Tool & Environment Check")
-        self.title.setStyleSheet("font-size: 18px; font-weight: bold; color: #00509E;")
+        self.title.setObjectName("page_title")
         self.title.setAlignment(Qt.AlignCenter)
         root.addWidget(self.title)
 
@@ -99,7 +100,6 @@ class CheckPage(QWidget):
 
         self.result_label = QLabel("")
         self.result_label.setAlignment(Qt.AlignCenter)
-        self.result_label.setStyleSheet("font-size: 14px; font-weight: bold;")
         self.result_label.hide()
         root.addWidget(self.result_label)
 
@@ -138,22 +138,26 @@ class CheckPage(QWidget):
 
         if plan.has_errors():
             self.result_label.setText("ERRORS found - see details below")
-            self.result_label.setStyleSheet(
-                "font-size: 14px; font-weight: bold; color: #C0392B;"
-            )
+            self.result_label.setObjectName("result_error")
         elif plan.has_warnings():
             self.result_label.setText("Completed with WARNINGS")
-            self.result_label.setStyleSheet(
-                "font-size: 14px; font-weight: bold; color: #E67E22;"
-            )
+            self.result_label.setObjectName("result_warn")
         else:
             self.result_label.setText("All checks PASSED")
-            self.result_label.setStyleSheet(
-                "font-size: 14px; font-weight: bold; color: #228B22;"
-            )
+            self.result_label.setObjectName("result_ok")
+        self.result_label.setStyle(self.result_label.style())
         self.result_label.show()
         self.next_btn.setEnabled(True)
         self.status_label.setText("Check complete.")
+
+    def _get_status_color(self, status: ToolStatusEnum) -> QColor:
+        if status == ToolStatusEnum.OK:
+            return self.theme_manager.get_color("status_ok")
+        elif status == ToolStatusEnum.WARNING:
+            return self.theme_manager.get_color("status_warn")
+        elif status == ToolStatusEnum.ERROR:
+            return self.theme_manager.get_color("status_error")
+        return self.theme_manager.get_color("text_secondary")
 
     def _populate_tools(self, tools):
         self.tools_table.setRowCount(len(tools))
@@ -164,12 +168,7 @@ class CheckPage(QWidget):
             self.tools_table.setItem(i, 0, name_item)
 
             status_item = QTableWidgetItem(t.status.value)
-            if t.status == ToolStatusEnum.OK:
-                status_item.setForeground(QColor("#228B22"))
-            elif t.status == ToolStatusEnum.WARNING:
-                status_item.setForeground(QColor("#E67E22"))
-            elif t.status == ToolStatusEnum.ERROR:
-                status_item.setForeground(QColor("#C0392B"))
+            status_item.setForeground(self._get_status_color(t.status))
             self.tools_table.setItem(i, 1, status_item)
 
             self.tools_table.setItem(i, 2, QTableWidgetItem(t.version or "---"))
@@ -183,14 +182,14 @@ class CheckPage(QWidget):
         self.env_table.setRowCount(len(env_checks))
         self.env_group.show()
         self.env_table.show()
+        ok_color = self.theme_manager.get_color("status_ok")
+        warn_color = self.theme_manager.get_color("status_warn")
+
         for i, e in enumerate(env_checks):
             self.env_table.setItem(i, 0, QTableWidgetItem(e.variable))
             status = "OK" if e.is_set else "MISSING"
             item = QTableWidgetItem(status)
-            if e.is_set:
-                item.setForeground(QColor("#228B22"))
-            else:
-                item.setForeground(QColor("#E67E22"))
+            item.setForeground(ok_color if e.is_set else warn_color)
             self.env_table.setItem(i, 1, item)
             self.env_table.setItem(i, 2, QTableWidgetItem(e.action))
 

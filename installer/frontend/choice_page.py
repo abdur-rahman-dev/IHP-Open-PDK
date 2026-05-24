@@ -27,7 +27,7 @@ class ChoicePage(QWidget):
         root.setSpacing(16)
 
         title = QLabel("PDK Installer Configuration")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #00509E;")
+        title.setObjectName("page_title")
         title.setAlignment(Qt.AlignCenter)
         root.addWidget(title)
 
@@ -105,7 +105,7 @@ class ChoicePage(QWidget):
         mode_note = QLabel(
             "'New' runs full tool checks.\n'Change PDK' skips tool checks unless tools are marked for re-check."
         )
-        mode_note.setStyleSheet("color: #666; font-size: 11px; margin-left: 12px;")
+        mode_note.setObjectName("dim_note")
         mode_note.setWordWrap(True)
         mode_lay.addWidget(mode_note)
         mode_group.setLayout(mode_lay)
@@ -118,6 +118,7 @@ class ChoicePage(QWidget):
         self.dir_input.setPlaceholderText("Leave empty to use current PDK location")
         dir_lay.addWidget(self.dir_input, 1)
         self.dir_browse = QPushButton("Browse...")
+        self.dir_browse.setObjectName("browse_btn")
         self.dir_browse.clicked.connect(self._on_browse)
         dir_lay.addWidget(self.dir_browse)
         dir_group.setLayout(dir_lay)
@@ -130,7 +131,7 @@ class ChoicePage(QWidget):
             "Note: The installation plan will be generated after clicking Next. "
             "No changes will be made until you confirm."
         )
-        note.setStyleSheet("color: #888; font-size: 11px;")
+        note.setObjectName("dim_note")
         note.setWordWrap(True)
         note.setAlignment(Qt.AlignCenter)
         root.addWidget(note)
