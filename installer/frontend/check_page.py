@@ -34,6 +34,19 @@ from installer.backend.checker import (
 from installer.backend.executor import InstallExecutor
 
 
+def _canonical_tool_name(name: str) -> str:
+    tool = (name or "").strip()
+    if tool in ("openvaf", "openvaf-r", "openvaf/openvaf-r"):
+        return "openvaf"
+    return tool
+
+
+def _tool_display_name(name: str) -> str:
+    if _canonical_tool_name(name) == "openvaf":
+        return "openvaf"
+    return name
+
+
 class ToolCheckWorker(QThread):
     status = Signal(str)
     progress = Signal(int, int)
@@ -46,11 +59,12 @@ class ToolCheckWorker(QThread):
 
     def run(self):
         all_tools = check_tools(self.config)
-        selected = set(self.selected)
+        selected = {_canonical_tool_name(t) for t in self.selected}
         tools = []
         for t in all_tools:
-            base = t.name.split("/")[0]
-            if base in selected or t.name in selected:
+            canonical = _canonical_tool_name(t.name)
+            base = _canonical_tool_name(t.name.split("/")[0])
+            if canonical in selected or base in selected:
                 tools.append(t)
 
         total = len(tools)
@@ -61,7 +75,7 @@ class ToolCheckWorker(QThread):
             return
 
         for i, t in enumerate(tools, start=1):
-            self.status.emit(f"Checking {t.name} ... {t.status.value}")
+            self.status.emit(f"Checking {_tool_display_name(t.name)} ... {t.status.value}")
             self.progress.emit(i, total)
         self.status.emit("Tool requirement check complete.")
         self.done.emit(tools)
@@ -129,7 +143,7 @@ class CheckPage(QWidget):
         self.tools_table.setHorizontalHeaderLabels(
             ["Tool", "Status", "Version", "Custom Path", "Notes"]
         )
-        for col in [0, 3, 4]:
+        for col in range(5):
             self.tools_table.horizontalHeader().setSectionResizeMode(
                 col, QHeaderView.ResizeMode.Stretch
             )
@@ -265,7 +279,7 @@ class CheckPage(QWidget):
     def _check_compiler_requirement(self, tools):
         has_sim = len(self.config.simulators) > 0
         has_compiler = any(
-            t.name in ("openvaf", "openvaf-r", "openvaf/openvaf-r") and t.installed
+            _canonical_tool_name(t.name) == "openvaf" and t.installed
             for t in tools
         )
         can_next = True
@@ -368,7 +382,7 @@ class CheckPage(QWidget):
         self.tools_group.show()
         self.tools_table.show()
         for i, t in enumerate(tools):
-            name_item = QTableWidgetItem(t.name)
+            name_item = QTableWidgetItem(_tool_display_name(t.name))
             name_item.setData(Qt.UserRole, t)
             self.tools_table.setItem(i, 0, name_item)
 
@@ -406,10 +420,22 @@ class CheckPage(QWidget):
                     if not custom_dir or custom_dir == "---":
                         return
                     tool_info = self.tools_table.item(r, 0)
-                    tool_name = tool_info.text().split("/")[0] if tool_info else ""
-                    bin_path = os.path.join(custom_dir, tool_name)
-                    if os.path.isfile(bin_path) and os.access(bin_path, os.X_OK):
-                        ver = get_version(tool_name) or "found"
+                    tool_obj = tool_info.data(Qt.UserRole) if tool_info else None
+                    raw_tool_name = tool_obj.name if tool_obj else ""
+                    if _canonical_tool_name(raw_tool_name) == "openvaf":
+                        candidates = ["openvaf-r", "openvaf"]
+                    else:
+                        candidates = [raw_tool_name.split("/")[0]] if raw_tool_name else []
+
+                    found_name = ""
+                    for candidate in candidates:
+                        bin_path = os.path.join(custom_dir, candidate)
+                        if os.path.isfile(bin_path) and os.access(bin_path, os.X_OK):
+                            found_name = candidate
+                            break
+
+                    if found_name:
+                        ver = get_version(found_name) or "found"
                         self.tools_table.setItem(r, 1, QTableWidgetItem("OK"))
                         self.tools_table.item(r, 1).setForeground(
                             self.theme_manager.get_color("status_ok")
@@ -420,16 +446,20 @@ class CheckPage(QWidget):
                         try:
                             env = os.environ.copy()
                             env["PATH"] = custom_dir + ":" + env.get("PATH", "")
-                            result = subprocess.run(
-                                ["which", tool_name],
-                                env=env,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.DEVNULL,
-                                text=True,
-                                timeout=5,
-                            )
-                            if result.returncode == 0:
-                                found = result.stdout.strip()
+                            found = ""
+                            for candidate in candidates:
+                                result = subprocess.run(
+                                    ["which", candidate],
+                                    env=env,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL,
+                                    text=True,
+                                    timeout=5,
+                                )
+                                if result.returncode == 0:
+                                    found = result.stdout.strip()
+                                    break
+                            if found:
                                 self.tools_table.setItem(r, 1, QTableWidgetItem("OK"))
                                 self.tools_table.item(r, 1).setForeground(
                                     self.theme_manager.get_color("status_ok")
@@ -463,8 +493,6 @@ class CheckPage(QWidget):
             path_widget.setLayout(path_lay)
             self.tools_table.setCellWidget(i, 3, path_widget)
             self.tools_table.setItem(i, 4, QTableWidgetItem(t.message))
-
-        self.tools_table.resizeColumnsToContents()
 
     def _populate_env(self, env_checks):
         if not env_checks:
