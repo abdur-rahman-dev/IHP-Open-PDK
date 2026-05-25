@@ -215,7 +215,7 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
 
 def check_environment(config: InstallConfig) -> list[EnvCheckResult]:
     results = []
-    pdk_root = config.get_pdk_root()
+    pdk_root = config.get_target_pdk_root()
     home = os.environ.get("HOME", "")
 
     pdk_root_env = os.environ.get("PDK_ROOT")
@@ -310,7 +310,7 @@ def _check_selected_tools(config: InstallConfig) -> list[ToolInfo]:
 
 def build_install_plan(config: InstallConfig) -> InstallPlan:
     plan = InstallPlan(config=config)
-    plan.pdk_root = config.get_pdk_root()
+    plan.pdk_root = config.get_target_pdk_root()
 
     if config.check_tools and config.tools_to_check:
         plan.tools = _check_selected_tools(config)
@@ -340,7 +340,7 @@ def build_install_plan(config: InstallConfig) -> InstallPlan:
             plan.actions.append(f"Set {e.variable} in .bashrc")
 
     if openvaf_available:
-        pdk_root = config.get_pdk_root()
+        pdk_root = config.get_target_pdk_root()
         osdi_dir = os.path.join(
             pdk_root, config.pdk.value, "libs.tech", "ngspice", "osdi"
         )
@@ -387,7 +387,9 @@ def build_install_plan(config: InstallConfig) -> InstallPlan:
         plan.actions.append("Configure Magic layout editor")
 
     if config.install_dir:
-        plan.actions.insert(0, f"Copy PDK from {config.pdk_root} to {config.install_dir}")
-        plan.actions.insert(1, f"Update PDK_ROOT to {config.install_dir}")
+        src_root = config.get_source_pdk_root()
+        target_root = config.get_target_pdk_root()
+        plan.actions.insert(0, f"Copy PDK from {src_root}/{config.pdk.value} to {config.get_target_pdk_dir()}")
+        plan.actions.insert(1, f"Update PDK_ROOT to {target_root}")
 
     return plan

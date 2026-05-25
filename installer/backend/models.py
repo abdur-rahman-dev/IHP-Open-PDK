@@ -74,9 +74,15 @@ class InstallConfig:
     check_tools: bool = False
     tools_to_check: list[str] = field(default_factory=list)
 
-    def get_pdk_root(self) -> str:
-        if self.install_dir:
-            return self.install_dir
+    def _normalize_root_from_install_dir(self, path: str) -> str:
+        import os
+
+        norm = os.path.normpath(path)
+        if os.path.basename(norm) == self.pdk.value:
+            return os.path.dirname(norm)
+        return norm
+
+    def get_source_pdk_root(self) -> str:
         if self.pdk_root:
             return self.pdk_root
         import os
@@ -92,6 +98,24 @@ class InstallConfig:
                 if child.is_dir() and (child / "libs.tech").is_dir():
                     return str(candidate)
         return str(script_dir.parent)
+
+    def get_target_pdk_root(self) -> str:
+        if self.install_dir:
+            return self._normalize_root_from_install_dir(self.install_dir)
+        return self.get_source_pdk_root()
+
+    def get_target_pdk_dir(self) -> str:
+        import os
+
+        if self.install_dir:
+            norm = os.path.normpath(self.install_dir)
+            if os.path.basename(norm) == self.pdk.value:
+                return norm
+            return os.path.join(norm, self.pdk.value)
+        return os.path.join(self.get_target_pdk_root(), self.pdk.value)
+
+    def get_pdk_root(self) -> str:
+        return self.get_target_pdk_root()
 
 
 @dataclass

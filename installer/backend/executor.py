@@ -72,11 +72,13 @@ class InstallExecutor(QThread):
 
     def _build_steps(self):
         cfg = self.plan.config
-        pdk_root = self.plan.pdk_root or cfg.get_pdk_root()
+        pdk_root = self.plan.pdk_root or cfg.get_target_pdk_root()
         pdk = cfg.pdk.value
 
-        if cfg.install_dir and cfg.install_dir != pdk_root:
-            self.steps.append(ExecStep(f"Copy PDK to {cfg.install_dir}"))
+        source_root = cfg.get_source_pdk_root()
+        target_root = cfg.get_target_pdk_root()
+        if cfg.install_dir and target_root != source_root:
+            self.steps.append(ExecStep(f"Copy PDK to {cfg.get_target_pdk_dir()}"))
             self.steps.append(ExecStep(f"Update PDK_ROOT"))
 
         self.steps.append(ExecStep("Set environment variables in .bashrc"))
@@ -118,34 +120,34 @@ class InstallExecutor(QThread):
     def _exec_step(self, idx: int, step: ExecStep) -> bool:
         label = step.label
         cfg = self.plan.config
-        pdk_root = self.plan.pdk_root or cfg.get_pdk_root()
+        pdk_root = self.plan.pdk_root or cfg.get_target_pdk_root()
         pdk = cfg.pdk.value
         home = os.environ.get("HOME", "")
 
         if label.startswith("Copy PDK to"):
-            dest = cfg.install_dir
-            if not dest:
+            dest_pdk_dir = cfg.get_target_pdk_dir()
+            src_root = cfg.get_source_pdk_root()
+            src_pdk_dir = os.path.join(src_root, pdk)
+            if not dest_pdk_dir:
                 return True
-            if os.path.exists(dest):
-                sub = os.path.join(dest, "ihp-sg13g2")
-                if os.path.exists(sub):
-                    self.log_line.emit(f"  Destination already exists, skipping copy")
-                    return True
+            if os.path.exists(dest_pdk_dir):
+                self.log_line.emit("  Destination PDK already exists, skipping copy")
+                return True
             try:
-                shutil.copytree(pdk_root, dest, symlinks=True, dirs_exist_ok=True)
-                self.log_line.emit(f"  Copied {pdk_root} -> {dest}")
+                os.makedirs(os.path.dirname(dest_pdk_dir), exist_ok=True)
+                shutil.copytree(src_pdk_dir, dest_pdk_dir, symlinks=True, dirs_exist_ok=True)
+                self.log_line.emit(f"  Copied {src_pdk_dir} -> {dest_pdk_dir}")
                 return True
             except Exception as e:
                 self.log_line.emit(f"  Copy failed: {e}")
                 return False
 
         if label == "Update PDK_ROOT":
-            if not cfg.install_dir:
-                return True
-            os.environ["PDK_ROOT"] = cfg.install_dir
-            self.plan.pdk_root = cfg.install_dir
-            self.log_line.emit(f"  PDK_ROOT updated to {cfg.install_dir}")
-            pdk_root = cfg.install_dir
+            target_root = cfg.get_target_pdk_root()
+            os.environ["PDK_ROOT"] = target_root
+            self.plan.pdk_root = target_root
+            self.log_line.emit(f"  PDK_ROOT updated to {target_root}")
+            pdk_root = target_root
             return True
 
         if label == "Set environment variables in .bashrc":
