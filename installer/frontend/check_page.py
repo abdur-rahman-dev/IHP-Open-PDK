@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QMessageBox,
     QFileDialog,
+    QTextEdit,
 )
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QColor
@@ -139,6 +140,7 @@ class CheckPage(QWidget):
         self.tools_group = QGroupBox("Tool Requirements")
         tools_lay = QVBoxLayout()
         self.tools_table = QTableWidget()
+        self.tools_table.verticalHeader().setVisible(False)
         self.tools_table.setColumnCount(5)
         self.tools_table.setHorizontalHeaderLabels(
             ["Tool", "Status", "Version", "Custom Path", "Notes"]
@@ -158,6 +160,7 @@ class CheckPage(QWidget):
         self.env_group = QGroupBox("Environment Variables")
         env_lay = QVBoxLayout()
         self.env_table = QTableWidget()
+        self.env_table.verticalHeader().setVisible(False)
         self.env_table.setColumnCount(4)
         self.env_table.setHorizontalHeaderLabels(
             ["Variable", "Status", "Current Value", "Action"]
@@ -179,6 +182,11 @@ class CheckPage(QWidget):
         self.install_result_label.hide()
         root.addWidget(self.install_result_label)
 
+        self.install_log = QTextEdit()
+        self.install_log.setReadOnly(True)
+        self.install_log.hide()
+        root.addWidget(self.install_log)
+
         self.hint_label = QLabel("")
         self.hint_label.setObjectName("dim_note")
         self.hint_label.setAlignment(Qt.AlignCenter)
@@ -192,6 +200,8 @@ class CheckPage(QWidget):
         self.status_label.setText("Preparing...")
         self.tools_group.hide()
         self.env_group.hide()
+        self.install_log.hide()
+        self.install_log.clear()
         self.install_result_label.hide()
         self.hint_label.hide()
 
@@ -334,10 +344,12 @@ class CheckPage(QWidget):
         self.progress_bar.setValue(0)
         self.progress_bar.setFormat("Installing... %p%")
         self.status_label.setText("Installing... please wait.")
+        self.install_log.show()
 
         self.executor = InstallExecutor(self.plan)
         self.executor.step_started.connect(self._on_install_step_started)
         self.executor.step_finished.connect(self._on_install_step_finished)
+        self.executor.log_line.connect(self._on_install_log)
         self.executor.all_done.connect(self._on_install_done)
         self.executor.start()
 
@@ -356,14 +368,23 @@ class CheckPage(QWidget):
         pct = int((done / total) * 100) if total > 0 else 100
         self.progress_bar.setValue(pct)
 
+    def _on_install_log(self, line: str):
+        self.install_log.append(line)
+
     def _on_install_done(self, success: bool):
         self.progress_bar.setValue(100)
-        self.status_label.setText("Installation complete.")
+        if self.executor:
+            try:
+                self.executor.log_line.disconnect(self._on_install_log)
+            except (TypeError, RuntimeError):
+                pass
         if success:
+            self.status_label.setText("Installation complete.")
             self.install_result_label.setText("Installation completed successfully!")
             self.install_result_label.setObjectName("result_ok")
         else:
-            self.install_result_label.setText("Installation completed with errors.")
+            self.status_label.setText("Installation failed.")
+            self.install_result_label.setText("Installation failed. Review the log below.")
             self.install_result_label.setObjectName("result_error")
         self.install_result_label.setStyle(self.install_result_label.style())
         self.install_result_label.show()
