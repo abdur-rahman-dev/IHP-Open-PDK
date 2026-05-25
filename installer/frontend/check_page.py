@@ -1,59 +1,106 @@
 import os
-import re
 import subprocess
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QProgressBar,
-    QGroupBox, QTextEdit, QMessageBox, QFileDialog, QDialog,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QProgressBar,
+    QGroupBox,
+    QMessageBox,
+    QFileDialog,
 )
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QColor
 
 from installer.backend.models import (
-    InstallPlan, ToolStatusEnum, ToolInfo, EnvCheckResult, InstallConfig,
+    InstallPlan,
+    ToolStatusEnum,
+    InstallConfig,
     ExecStepStatus,
 )
 from installer.backend.checker import (
-    build_install_plan, check_environment, is_program_installed, get_version,
+    check_tools,
+    check_environment,
+    build_install_plan,
+    is_program_installed,
+    get_version,
 )
 from installer.backend.executor import InstallExecutor
 
 
 class ToolCheckWorker(QThread):
-    progress = Signal(str)
-    tool_checked = Signal(str, str, str, str)
-    done = Signal(object)
+    status = Signal(str)
+    progress = Signal(int, int)
+    done = Signal(list)
 
-    def __init__(self, config: InstallConfig):
+    def __init__(self, config: InstallConfig, selected: list[str]):
         super().__init__()
         self.config = config
+        self.selected = selected
 
     def run(self):
-        from installer.backend.checker import check_tools
-        self.progress.emit("Checking tools...")
-        tools = check_tools(self.config)
-        plan = build_install_plan(self.config)
-        for t in tools:
-            ver = t.version or "---"
-            self.tool_checked.emit(t.name, t.status.value, ver, t.message)
-        self.progress.emit("Check complete.")
-        plan.tools = tools
-        self.done.emit(plan)
+        all_tools = check_tools(self.config)
+        selected = set(self.selected)
+        tools = []
+        for t in all_tools:
+            base = t.name.split("/")[0]
+            if base in selected or t.name in selected:
+                tools.append(t)
+
+        total = len(tools)
+        if total == 0:
+            self.status.emit("No tools selected for requirement check.")
+            self.progress.emit(0, 0)
+            self.done.emit([])
+            return
+
+        for i, t in enumerate(tools, start=1):
+            self.status.emit(f"Checking {t.name} ... {t.status.value}")
+            self.progress.emit(i, total)
+        self.status.emit("Tool requirement check complete.")
+        self.done.emit(tools)
+
+
+class InstallWorker(QThread):
+    status = Signal(str)
+    progress = Signal(int, int)
+    finished_ok = Signal(bool, str)
+
+    def __init__(self, plan: InstallPlan):
+        super().__init__()
+        self.executor = InstallExecutor(plan)
+
+    def run(self):
+        self.executor.run()
+        total = len(self.executor.steps)
+        done = sum(
+            1
+            for s in self.executor.steps
+            if s.status in (ExecStepStatus.DONE, ExecStepStatus.FAILED)
+        )
+        success = all(s.status != ExecStepStatus.FAILED for s in self.executor.steps)
+        msg = "Installation completed successfully!" if success else "Installation completed with errors."
+        self.progress.emit(done, total)
+        self.finished_ok.emit(success, msg)
 
 
 class CheckPage(QWidget):
-    back_requested = Signal()
-    install_ready = Signal(bool)
-    back_allowed = Signal(bool)
+    nav_state_changed = Signal(dict)
 
     def __init__(self, config: InstallConfig, theme_manager, parent=None):
         super().__init__(parent)
         self.config = config
         self.theme_manager = theme_manager
         self.plan: InstallPlan | None = None
+        self.tool_worker: ToolCheckWorker | None = None
+        self.install_worker: InstallWorker | None = None
         self.executor: InstallExecutor | None = None
-        self.worker = None
         self._build_ui()
 
     def _build_ui(self):
@@ -66,16 +113,16 @@ class CheckPage(QWidget):
         root.addWidget(self.result_label)
 
         self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("Checking...")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.hide()
         root.addWidget(self.progress_bar)
 
         self.status_label = QLabel("Preparing...")
         self.status_label.setAlignment(Qt.AlignCenter)
         root.addWidget(self.status_label)
 
-        self.tools_group = QGroupBox("Tool Check")
+        self.tools_group = QGroupBox("Tool Requirements")
         tools_lay = QVBoxLayout()
         self.tools_table = QTableWidget()
         self.tools_table.setColumnCount(5)
@@ -87,9 +134,7 @@ class CheckPage(QWidget):
                 col, QHeaderView.ResizeMode.Stretch
             )
         self.tools_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.tools_table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows
-        )
+        self.tools_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tools_table.hide()
         tools_lay.addWidget(self.tools_table)
         self.tools_group.setLayout(tools_lay)
@@ -108,24 +153,12 @@ class CheckPage(QWidget):
                 col, QHeaderView.ResizeMode.Stretch
             )
         self.env_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.env_table.setSelectionBehavior(
-            QTableWidget.SelectionBehavior.SelectRows
-        )
+        self.env_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.env_table.hide()
         env_lay.addWidget(self.env_table)
         self.env_group.setLayout(env_lay)
         self.env_group.hide()
         root.addWidget(self.env_group)
-
-        self.exec_log = QTextEdit()
-        self.exec_log.setReadOnly(True)
-        self.exec_log.setMaximumHeight(120)
-        log_font = self.exec_log.font()
-        log_font.setFamily("monospace")
-        log_font.setPointSize(9)
-        self.exec_log.setFont(log_font)
-        self.exec_log.hide()
-        root.addWidget(self.exec_log)
 
         self.install_result_label = QLabel("")
         self.install_result_label.setAlignment(Qt.AlignCenter)
@@ -138,46 +171,84 @@ class CheckPage(QWidget):
         self.hint_label.hide()
         root.addWidget(self.hint_label)
 
-    def run_check(self):
-        self.progress_bar.show()
+    def reset_view(self):
+        self.result_label.hide()
+        self.progress_bar.hide()
+        self.progress_bar.setValue(0)
+        self.status_label.setText("Preparing...")
         self.tools_group.hide()
         self.env_group.hide()
-        self.result_label.hide()
-        self.exec_log.hide()
         self.install_result_label.hide()
         self.hint_label.hide()
-        self.install_ready.emit(False)
-        self.back_allowed.emit(True)
 
-        if self.config.check_tools and self.config.tools_to_check:
-            self._run_tool_check()
-        else:
-            self._run_env_check()
+    def _configured_tools(self) -> list[str]:
+        tools = set()
+        for sim in self.config.simulators:
+            if sim.value == "ngspice":
+                tools.add("ngspice")
+            elif sim.value == "Xyce":
+                tools.add("Xyce")
+                tools.add("buildxyceplugin")
+            elif sim.value == "gnucap":
+                tools.add("gnucap")
+                tools.add("gnucap-mg-vams")
+            tools.add("openvaf/openvaf-r")
 
-    def _run_tool_check(self):
-        self.status_label.setText("Checking EDA tools...")
-        self.exec_log.show()
-        self.exec_log.clear()
+        for ed in self.config.schematic_editors:
+            tools.add(ed.value)
+        for ed in self.config.layout_editors:
+            tools.add(ed.value)
 
-        self.worker = ToolCheckWorker(self.config)
-        self.worker.progress.connect(self._on_progress)
-        self.worker.tool_checked.connect(self._on_tool_checked)
-        self.worker.done.connect(self._on_tool_check_done)
-        self.worker.start()
+        tools.add("python3")
+        tools.add("pip")
+        return list(tools)
 
-    def _on_tool_checked(self, name, status, version, notes):
-        line = f"Checking {name} ..... {status}"
-        if version and version != "---":
-            line += f" ({version})"
-        self.exec_log.append(line)
+    def _selected_tools(self) -> list[str]:
+        selected = set(self._configured_tools())
+        if self.config.check_tools:
+            selected.update(self.config.tools_to_check)
+        return list(selected)
 
-    def _on_tool_check_done(self, plan: InstallPlan):
-        self.plan = plan
+    def start_tool_check(self):
+        self.reset_view()
+        self.progress_bar.show()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Checking tools... %p%")
+        self.status_label.setText("Starting tool requirement checks...")
+        self.hint_label.setText("Checking selected requirements...")
+        self.hint_label.show()
+
+        selected = self._selected_tools()
+        self.tool_worker = ToolCheckWorker(self.config, selected)
+        self.tool_worker.status.connect(self.status_label.setText)
+        self.tool_worker.progress.connect(self._on_tool_progress)
+        self.tool_worker.done.connect(self._on_tool_done)
+        self.tool_worker.start()
+
+        self.nav_state_changed.emit({
+            "next_enabled": False,
+            "next_text": "Next >",
+        })
+
+    def _on_tool_progress(self, done: int, total: int):
+        if total <= 0:
+            self.progress_bar.setValue(100)
+            return
+        pct = int((done / total) * 100)
+        self.progress_bar.setValue(pct)
+
+    def _on_tool_done(self, tools):
+        if self.plan is None:
+            self.plan = build_install_plan(self.config)
+        self.plan.tools = tools
+
         self.progress_bar.hide()
-        self._populate_tools(plan.tools)
+        self._populate_tools(tools)
 
-        has_missing = any(not t.installed for t in plan.tools)
-        if plan.has_errors():
+        has_missing = any(not t.installed for t in tools)
+        has_error = any(t.status == ToolStatusEnum.ERROR for t in tools)
+        if has_error:
             self.result_label.setText("ERRORS found - see details below")
             self.result_label.setObjectName("result_error")
         elif has_missing:
@@ -189,143 +260,106 @@ class CheckPage(QWidget):
         self.result_label.setStyle(self.result_label.style())
         self.result_label.show()
 
-        self._check_compiler_requirement()
+        self._check_compiler_requirement(tools)
 
-        self._run_env_check()
-
-    def _check_compiler_requirement(self):
-        if not self.plan:
-            return
-        from installer.backend.models import Simulator
+    def _check_compiler_requirement(self, tools):
         has_sim = len(self.config.simulators) > 0
         has_compiler = any(
-            t.name in ("openvaf", "openvaf-r") and t.installed
-            for t in self.plan.tools
+            t.name in ("openvaf", "openvaf-r", "openvaf/openvaf-r") and t.installed
+            for t in tools
         )
+        can_next = True
         if has_sim and not has_compiler:
             self.result_label.setText(
-                "ERROR: Simulator selected but openvaf/openvaf-r compiler not found.\n"
-                "Install it or provide a custom path."
+                "ERROR: Simulator selected but openvaf/openvaf-r compiler not found."
             )
             self.result_label.setObjectName("result_error")
             self.result_label.setStyle(self.result_label.style())
-            self.install_ready.emit(False)
+            can_next = False
 
-    def _run_env_check(self):
+        self.hint_label.setText("Click Next to continue to environment checks.")
+        self.hint_label.show()
+        self.nav_state_changed.emit({
+            "next_enabled": can_next,
+            "next_text": "Next >",
+        })
+
+    def start_env_check(self):
+        self.reset_view()
         self.status_label.setText("Checking environment variables...")
+        self.progress_bar.show()
+        self.progress_bar.setRange(0, 0)
+
         env_checks = check_environment(self.config)
-        if self.plan:
-            self.plan.env_checks = env_checks
-        else:
+        if self.plan is None:
             self.plan = build_install_plan(self.config)
-            self.plan.env_checks = env_checks
+        self.plan.env_checks = env_checks
         self._populate_env(env_checks)
 
         self.progress_bar.hide()
-        can_install = not (self.plan and self.plan.has_errors())
-        self.install_ready.emit(can_install)
-
+        self.status_label.setText("Environment check complete.")
+        self.result_label.setText("Environment check results")
+        self.result_label.setObjectName("result_ok")
+        self.result_label.setStyle(self.result_label.style())
+        self.result_label.show()
         self.hint_label.setText("Click Install to proceed.")
         self.hint_label.show()
-        self.status_label.setText("Check complete.")
 
-    def _on_progress(self, msg):
-        self.status_label.setText(msg)
+        can_install = not self.plan.has_errors()
+        self.nav_state_changed.emit({
+            "next_enabled": can_install,
+            "next_text": "Install",
+        })
 
-    def _on_install(self):
+    def start_install(self):
         if not self.plan:
             return
-        reply = QMessageBox.question(
-            self, "Confirm Installation",
-            "This will install/configure the PDK.\n\nProceed?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if reply != QMessageBox.Yes:
-            return
-
-        self.install_ready.emit(False)
-        self.back_allowed.emit(False)
-        self.hint_label.hide()
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Installation Progress")
-        dialog.setMinimumSize(600, 400)
-        dialog_layout = QVBoxLayout(dialog)
-
-        dialog_progress = QProgressBar()
-        dialog_progress.setRange(0, 100)
-        dialog_progress.setValue(0)
-        dialog_progress.setFormat("Installing...")
-        dialog_layout.addWidget(dialog_progress)
-
-        dialog_log = QTextEdit()
-        dialog_log.setReadOnly(True)
-        log_font = dialog_log.font()
-        log_font.setFamily("monospace")
-        log_font.setPointSize(9)
-        dialog_log.setFont(log_font)
-        dialog_layout.addWidget(dialog_log, 1)
-
-        dialog_status = QLabel("Installing... please wait.")
-        dialog_status.setAlignment(Qt.AlignCenter)
-        dialog_layout.addWidget(dialog_status)
-
-        dialog_close_btn = QPushButton("Close")
-        dialog_close_btn.setEnabled(False)
-        dialog_close_btn.clicked.connect(dialog.accept)
-        dialog_layout.addWidget(dialog_close_btn)
+        self.reset_view()
+        self.progress_bar.show()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("Installing... %p%")
+        self.status_label.setText("Installing... please wait.")
 
         self.executor = InstallExecutor(self.plan)
-
-        def on_step_started(idx, label):
-            dialog_log.append(f"[{idx+1}] {label}...")
-            dialog_progress.setFormat(f"Step {idx+1}: {label}")
-
-        def on_step_finished(idx, label, ok):
-            dialog_log.append(f"    -> {'OK' if ok else 'FAILED'}")
-            total = len(self.executor.steps)
-            done = sum(
-                1 for s in self.executor.steps
-                if s.status in (ExecStepStatus.DONE, ExecStepStatus.FAILED)
-            )
-            pct = int((done / total) * 100) if total > 0 else 100
-            dialog_progress.setValue(pct)
-
-        def on_log(msg):
-            dialog_log.append(msg)
-
-        def on_all_done(success):
-            dialog_progress.setValue(100)
-            dialog_close_btn.setEnabled(True)
-            self.back_allowed.emit(True)
-            if success:
-                dialog_status.setText("Installation completed successfully!")
-                dialog_status.setStyleSheet("color: green; font-weight: bold;")
-                dialog_progress.setFormat("Done")
-            else:
-                dialog_status.setText("Installation completed with errors. See log above.")
-                dialog_status.setStyleSheet("color: red; font-weight: bold;")
-                dialog_progress.setFormat("Done (with errors)")
-            self.install_result_label.setText(dialog_status.text())
-            self.install_result_label.setObjectName("result_ok" if success else "result_error")
-            self.install_result_label.setStyle(self.install_result_label.style())
-            self.install_result_label.show()
-
-        self.executor.step_started.connect(on_step_started)
-        self.executor.step_finished.connect(on_step_finished)
-        self.executor.all_done.connect(on_all_done)
-        self.executor.log_line.connect(on_log)
+        self.executor.step_started.connect(self._on_install_step_started)
+        self.executor.step_finished.connect(self._on_install_step_finished)
+        self.executor.all_done.connect(self._on_install_done)
         self.executor.start()
 
-        dialog.exec()
+    def _on_install_step_started(self, idx: int, label: str):
+        self.status_label.setText(f"Step {idx + 1}: {label}")
+
+    def _on_install_step_finished(self, idx: int, label: str, ok: bool):
+        if not self.executor:
+            return
+        total = len(self.executor.steps)
+        done = sum(
+            1
+            for s in self.executor.steps
+            if s.status in (ExecStepStatus.DONE, ExecStepStatus.FAILED)
+        )
+        pct = int((done / total) * 100) if total > 0 else 100
+        self.progress_bar.setValue(pct)
+
+    def _on_install_done(self, success: bool):
+        self.progress_bar.setValue(100)
+        self.status_label.setText("Installation complete.")
+        if success:
+            self.install_result_label.setText("Installation completed successfully!")
+            self.install_result_label.setObjectName("result_ok")
+        else:
+            self.install_result_label.setText("Installation completed with errors.")
+            self.install_result_label.setObjectName("result_error")
+        self.install_result_label.setStyle(self.install_result_label.style())
+        self.install_result_label.show()
 
     def _get_status_color(self, status: ToolStatusEnum) -> QColor:
         if status == ToolStatusEnum.OK:
             return self.theme_manager.get_color("status_ok")
-        elif status == ToolStatusEnum.WARNING:
+        if status == ToolStatusEnum.WARNING:
             return self.theme_manager.get_color("status_warn")
-        elif status == ToolStatusEnum.ERROR:
+        if status == ToolStatusEnum.ERROR:
             return self.theme_manager.get_color("status_error")
         return self.theme_manager.get_color("text_secondary")
 
@@ -361,8 +395,8 @@ class CheckPage(QWidget):
                         self, f"Select directory containing {tools[r].name}"
                     )
                     if d:
-                        existing = self.tools_table.item(r, 3)
                         self.tools_table.setItem(r, 3, QTableWidgetItem(d))
+
                 return cb
 
             def make_recheck_cb(r):
@@ -377,8 +411,9 @@ class CheckPage(QWidget):
                     if os.path.isfile(bin_path) and os.access(bin_path, os.X_OK):
                         ver = get_version(tool_name) or "found"
                         self.tools_table.setItem(r, 1, QTableWidgetItem("OK"))
-                        ok_color = self.theme_manager.get_color("status_ok")
-                        self.tools_table.item(r, 1).setForeground(ok_color)
+                        self.tools_table.item(r, 1).setForeground(
+                            self.theme_manager.get_color("status_ok")
+                        )
                         self.tools_table.setItem(r, 2, QTableWidgetItem(ver))
                         self.tools_table.setItem(r, 4, QTableWidgetItem(""))
                     else:
@@ -390,21 +425,27 @@ class CheckPage(QWidget):
                                 env=env,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL,
-                                text=True, timeout=5,
+                                text=True,
+                                timeout=5,
                             )
                             if result.returncode == 0:
                                 found = result.stdout.strip()
                                 self.tools_table.setItem(r, 1, QTableWidgetItem("OK"))
-                                ok_color = self.theme_manager.get_color("status_ok")
-                                self.tools_table.item(r, 1).setForeground(ok_color)
+                                self.tools_table.item(r, 1).setForeground(
+                                    self.theme_manager.get_color("status_ok")
+                                )
                                 self.tools_table.setItem(r, 4, QTableWidgetItem(f"Found: {found}"))
                             else:
                                 self.tools_table.setItem(r, 1, QTableWidgetItem("MISSING"))
-                                err_color = self.theme_manager.get_color("status_error")
-                                self.tools_table.item(r, 1).setForeground(err_color)
-                                self.tools_table.setItem(r, 4, QTableWidgetItem(f"Not found in {custom_dir}"))
+                                self.tools_table.item(r, 1).setForeground(
+                                    self.theme_manager.get_color("status_error")
+                                )
+                                self.tools_table.setItem(
+                                    r, 4, QTableWidgetItem(f"Not found in {custom_dir}")
+                                )
                         except Exception:
                             self.tools_table.setItem(r, 4, QTableWidgetItem("Re-check failed"))
+
                 return cb
 
             browse_btn.clicked.connect(make_browse_cb(row))

@@ -1,7 +1,9 @@
+import os
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QRadioButton,
     QCheckBox, QButtonGroup, QLineEdit, QPushButton, QGroupBox,
-    QFileDialog, QGridLayout,
+    QFileDialog, QGridLayout, QScrollArea,
 )
 from PySide6.QtCore import Qt
 
@@ -17,9 +19,15 @@ PDK_OPTIONS = [
 
 
 class ChoicePage(QWidget):
+    PDK_DIR_MAP = {
+        "ihp-sg13g2": "ihp-sg13g2",
+        "ihp-sg13cmos5l": "ihp-sg13cmos5l",
+    }
+
     def __init__(self, config: InstallConfig, parent=None):
         super().__init__(parent)
         self.config = config
+        self._base_dir = ""
         self._build_ui()
 
     def _build_ui(self):
@@ -61,82 +69,78 @@ class ChoicePage(QWidget):
         grid.addWidget(mode_group, row, 0, 1, 2)
         row += 1
 
-        eda_group = QGroupBox("EDA Configuration")
-        eda_lay = QVBoxLayout()
-        eda_lay.setSpacing(6)
+        eda_group = QGroupBox("Config EDA")
+        eda_grid = QGridLayout()
+        eda_grid.setSpacing(8)
 
-        sim_inner = QHBoxLayout()
-        sim_label = QLabel("Simulators:")
-        sim_label.setFixedWidth(120)
-        sim_inner.addWidget(sim_label)
+        all_items = []
         self.sim_checks = {}
         for sim in Simulator:
-            cb = QCheckBox(sim.value)
-            cb.setChecked(sim == Simulator.NGSPICE)
-            cb.setProperty("sim_value", sim)
-            self.sim_checks[sim] = cb
-            sim_inner.addWidget(cb)
-        sim_inner.addStretch()
-        eda_lay.addLayout(sim_inner)
-
-        sch_inner = QHBoxLayout()
-        sch_label = QLabel("Schematic Editor:")
-        sch_label.setFixedWidth(120)
-        sch_inner.addWidget(sch_label)
+            all_items.append(("sim", sim))
         self.sch_checks = {}
         for ed in SchematicEditor:
-            cb = QCheckBox(ed.value)
-            cb.setChecked(ed == SchematicEditor.XSCHEM)
-            cb.setProperty("sch_value", ed)
-            self.sch_checks[ed] = cb
-            sch_inner.addWidget(cb)
-        sch_inner.addStretch()
-        eda_lay.addLayout(sch_inner)
-
-        lay_inner = QHBoxLayout()
-        lay_label = QLabel("Layout Editor:")
-        lay_label.setFixedWidth(120)
-        lay_inner.addWidget(lay_label)
+            all_items.append(("sch", ed))
         self.lay_checks = {}
         for ed in LayoutEditor:
-            cb = QCheckBox(ed.value)
-            cb.setChecked(ed == LayoutEditor.KLAYOUT)
-            cb.setProperty("lay_value", ed)
-            self.lay_checks[ed] = cb
-            lay_inner.addWidget(cb)
-        lay_inner.addStretch()
-        eda_lay.addLayout(lay_inner)
+            if ed == LayoutEditor.MAGIC:
+                continue
+            all_items.append(("lay", ed))
 
-        eda_group.setLayout(eda_lay)
+        cols = 3
+        for i, (group, item) in enumerate(all_items):
+            r, c = divmod(i, cols)
+            cb = QCheckBox(item.value)
+            if group == "sim":
+                cb.setChecked(item == Simulator.NGSPICE)
+                cb.setProperty("sim_value", item)
+                self.sim_checks[item] = cb
+            elif group == "sch":
+                cb.setChecked(item == SchematicEditor.XSCHEM)
+                cb.setProperty("sch_value", item)
+                self.sch_checks[item] = cb
+            else:
+                cb.setChecked(item == LayoutEditor.KLAYOUT)
+                cb.setProperty("lay_value", item)
+                self.lay_checks[item] = cb
+            eda_grid.addWidget(cb, r, c)
+
+        eda_group.setLayout(eda_grid)
         grid.addWidget(eda_group, row, 0, 1, 2)
         row += 1
 
         tc_group = QGroupBox("Tool Check")
         tc_lay = QVBoxLayout()
-        self.tc_enable = QCheckBox("Check EDA tools requirement")
+        self.tc_enable = QCheckBox("Requirement check for EDA tool")
         self.tc_enable.setChecked(False)
         self.tc_enable.toggled.connect(self._on_tc_toggled)
         tc_lay.addWidget(self.tc_enable)
 
-        tc_tools_widget = QWidget()
-        tc_tools_lay = QVBoxLayout()
-        tc_tools_lay.setContentsMargins(20, 4, 4, 4)
-        tc_tools_lay.setSpacing(4)
+        tc_tools_inner = QWidget()
+        tc_tools_grid = QGridLayout()
+        tc_tools_grid.setContentsMargins(20, 4, 4, 4)
+        tc_tools_grid.setSpacing(4)
         self.tc_checks = {}
         all_tools = [
-            "openvaf/openvaf-r", "ngspice", "Xyce", "buildxyceplugin",
-            "gnucap", "gnucap-mg-vams", "xschem", "qucs-s",
-            "klayout", "magic", "python3", "pip",
+            "python3", "pip", "openvaf/openvaf-r",
+            "buildxyceplugin", "gnucap-mg-vams", "ngspice",
+            "Xyce", "gnucap", "xschem",
+            "qucs-s", "klayout", "magic",
         ]
-        for tool in all_tools:
+        for i, tool in enumerate(all_tools):
             cb = QCheckBox(tool)
             cb.setChecked(False)
             self.tc_checks[tool] = cb
-            tc_tools_lay.addWidget(cb)
-        tc_tools_widget.setLayout(tc_tools_lay)
-        tc_tools_widget.hide()
-        self.tc_tools_widget = tc_tools_widget
-        tc_lay.addWidget(tc_tools_widget)
+            r, c = divmod(i, 3)
+            tc_tools_grid.addWidget(cb, r, c)
+        tc_tools_inner.setLayout(tc_tools_grid)
+
+        tc_scroll = QScrollArea()
+        tc_scroll.setWidget(tc_tools_inner)
+        tc_scroll.setWidgetResizable(True)
+        tc_scroll.setMaximumHeight(150)
+        tc_scroll.hide()
+        self.tc_tools_widget = tc_scroll
+        tc_lay.addWidget(tc_scroll)
         tc_group.setLayout(tc_lay)
         grid.addWidget(tc_group, row, 0, 1, 2)
         row += 1
@@ -157,8 +161,25 @@ class ChoicePage(QWidget):
         root.addLayout(grid)
         root.addStretch()
 
+    def set_base_dir(self, base_dir: str):
+        self._base_dir = base_dir
+        self._update_dir_for_pdk()
+
+    def _get_selected_pdk(self) -> str:
+        for btn in self.pdk_btn_group.buttons():
+            if btn.isChecked():
+                return btn.property("pdk_value")
+        return "ihp-sg13g2"
+
     def _on_pdk_changed(self, btn):
-        pass
+        self._update_dir_for_pdk()
+
+    def _update_dir_for_pdk(self):
+        if not self._base_dir:
+            return
+        pdk = self._get_selected_pdk()
+        subdir = self.PDK_DIR_MAP.get(pdk, pdk)
+        self.dir_input.setText(os.path.join(self._base_dir, subdir))
 
     def _on_tc_toggled(self, checked):
         self.tc_tools_widget.setVisible(checked)

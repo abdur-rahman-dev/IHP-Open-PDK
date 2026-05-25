@@ -1,10 +1,15 @@
 import os
-import sys
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QStackedWidget, QMessageBox, QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QStackedWidget,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QCloseEvent
@@ -19,6 +24,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = InstallConfig()
         self.theme_manager = theme_manager
+        self.current_step = 0
 
         script_dir = Path(__file__).resolve().parent
         for candidate in [script_dir, script_dir.parent]:
@@ -39,15 +45,13 @@ class MainWindow(QMainWindow):
             self.choice_page.mode_change.setChecked(True)
             self.choice_page.mode_new.setChecked(False)
 
-        default_pdk_dir = ""
+        default_base = ""
         if env_pdk_root and env_pdk:
-            default_pdk_dir = os.path.join(env_pdk_root, env_pdk)
+            default_base = env_pdk_root
         elif self.config.pdk_root:
-            default_pdk_dir = os.path.join(
-                self.config.pdk_root, self.config.pdk.value
-            )
-        if default_pdk_dir:
-            self.choice_page.dir_input.setText(default_pdk_dir)
+            default_base = self.config.pdk_root
+        if default_base:
+            self.choice_page.set_base_dir(default_base)
 
     def _build_ui(self):
         self.setWindowTitle("IHP-Open-PDK Installer")
@@ -61,7 +65,6 @@ class MainWindow(QMainWindow):
         root.setSpacing(8)
 
         header_row = QHBoxLayout()
-
         header_spacer = QLabel("")
         header_spacer.setFixedWidth(108)
         header_row.addWidget(header_spacer)
@@ -75,7 +78,6 @@ class MainWindow(QMainWindow):
         self.theme_combo = self.theme_manager.create_combo(self)
         self.theme_combo.setFixedWidth(108)
         header_row.addWidget(self.theme_combo)
-
         root.addLayout(header_row)
 
         sep = QLabel("")
@@ -93,18 +95,15 @@ class MainWindow(QMainWindow):
         self.stacked.addWidget(self.check_page)
 
         nav_lay = QHBoxLayout()
-        nav_lay.addStretch()
-
-        self.step_label = QLabel("Step 1 of 2: Configuration")
+        self.step_label = QLabel("Step 1 of 4: Configuration")
         self.step_label.setObjectName("step_label")
-        self.step_label.setAlignment(Qt.AlignCenter)
+        self.step_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         nav_lay.addWidget(self.step_label)
         nav_lay.addStretch()
 
         self.back_btn = QPushButton("< Back")
         self.back_btn.setFixedWidth(100)
-        self.back_btn.clicked.connect(self._go_to_choices)
-        self.back_btn.hide()
+        self.back_btn.clicked.connect(self._on_back)
         nav_lay.addWidget(self.back_btn)
 
         self.next_btn = QPushButton("Next >")
@@ -120,37 +119,67 @@ class MainWindow(QMainWindow):
 
         root.addLayout(nav_lay)
 
-        self.check_page.install_ready.connect(self._on_install_ready)
-        self.check_page.back_allowed.connect(self._on_back_allowed)
+        self.check_page.nav_state_changed.connect(self._on_nav_state_changed)
+        self._update_ui_for_step()
 
-        self._update_nav()
+    def _step_name(self, idx: int) -> str:
+        names = [
+            "Configuration",
+            "Tool Requirements Check",
+            "Environment Checks",
+            "Install Progress",
+        ]
+        return names[idx]
 
-    def _update_nav(self):
-        idx = self.stacked.currentIndex()
-        total = self.stacked.count()
-        step_name = self._step_name(idx)
-        self.step_label.setText(f"Step {idx + 1} of {total}: {step_name}")
-        self.header_label.setText(step_name)
+    def _update_ui_for_step(self):
+        self.step_label.setText(f"Step {self.current_step + 1} of 4: {self._step_name(self.current_step)}")
+        self.header_label.setText(self._step_name(self.current_step))
 
-        if idx == 0:
+        self.back_btn.show()
+        self.next_btn.show()
+        self.close_btn.show()
+
+        if self.current_step == 0:
             self.back_btn.hide()
             self.next_btn.setText("Next >")
             self.next_btn.setObjectName("")
             self.next_btn.setEnabled(True)
             self.next_btn.setStyle(self.next_btn.style())
-        elif idx == 1:
+        elif self.current_step == 1:
             self.back_btn.show()
             self.back_btn.setEnabled(True)
+            self.next_btn.setText("Next >")
+            self.next_btn.setObjectName("")
+            self.next_btn.setEnabled(False)
+            self.next_btn.setStyle(self.next_btn.style())
+        elif self.current_step == 2:
+            self.back_btn.hide()
+            self.next_btn.show()
             self.next_btn.setText("Install")
             self.next_btn.setObjectName("install_btn")
-            self.next_btn.setStyle(self.next_btn.style())
             self.next_btn.setEnabled(False)
+            self.next_btn.setStyle(self.next_btn.style())
+        else:
+            self.back_btn.hide()
+            self.next_btn.hide()
 
-    def _step_name(self, idx):
-        return ["Configuration", "Check & Install"][idx]
+    def _go_to_step(self, step: int):
+        self.current_step = step
+        if step == 0:
+            self.stacked.setCurrentIndex(0)
+        else:
+            self.stacked.setCurrentIndex(1)
+        self._update_ui_for_step()
 
-    def _on_next(self):
-        if self.stacked.currentIndex() == 0:
+        if step == 1:
+            self.check_page.start_tool_check()
+        elif step == 2:
+            self.check_page.start_env_check()
+        elif step == 3:
+            self.check_page.start_install()
+
+    def _on_next_action(self):
+        if self.current_step == 0:
             config = self.choice_page.get_config()
             missing = []
             if not config.simulators:
@@ -161,7 +190,8 @@ class MainWindow(QMainWindow):
                 missing.append("layout editor")
             if missing:
                 reply = QMessageBox.warning(
-                    self, "Incomplete Selection",
+                    self,
+                    "Incomplete Selection",
                     f"No {'/'.join(missing)} selected. Proceed anyway?",
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.No,
@@ -172,42 +202,49 @@ class MainWindow(QMainWindow):
                 try:
                     Path(config.install_dir).mkdir(parents=True, exist_ok=True)
                 except OSError:
-                    QMessageBox.warning(self, "Invalid Directory", f"Cannot create directory: {config.install_dir}")
+                    QMessageBox.warning(
+                        self,
+                        "Invalid Directory",
+                        f"Cannot create directory: {config.install_dir}",
+                    )
                     return
-            self.stacked.setCurrentIndex(1)
-            self._update_nav()
-            self.check_page.run_check()
+            self._go_to_step(1)
+        elif self.current_step == 1:
+            self._go_to_step(2)
+        elif self.current_step == 2:
+            self._go_to_step(3)
 
-    def _go_to_choices(self):
-        self.stacked.setCurrentIndex(0)
-        self._update_nav()
+    def _on_back(self):
+        if self.current_step == 1:
+            self._go_to_step(0)
 
-    def _on_next_action(self):
-        idx = self.stacked.currentIndex()
-        if idx == 0:
-            self._on_next()
-        elif idx == 1:
-            self.check_page._on_install()
-
-    def _on_install_ready(self, enabled: bool):
-        if self.stacked.currentIndex() == 1:
-            self.next_btn.setEnabled(enabled)
-
-    def _on_back_allowed(self, enabled: bool):
-        if self.stacked.currentIndex() == 1:
-            self.back_btn.setEnabled(enabled)
+    def _on_nav_state_changed(self, state: dict):
+        if self.current_step not in (1, 2):
+            return
+        if "next_enabled" in state:
+            self.next_btn.setEnabled(bool(state["next_enabled"]))
+        if "next_text" in state:
+            text = state["next_text"]
+            self.next_btn.setText(text)
+            if text == "Install":
+                self.next_btn.setObjectName("install_btn")
+            else:
+                self.next_btn.setObjectName("")
+            self.next_btn.setStyle(self.next_btn.style())
 
     def closeEvent(self, event: QCloseEvent):
         cp = self.check_page
         if cp.executor and cp.executor.isRunning():
             cp.executor.cancel()
-            cp.executor.wait(2000)
-            cp.executor.terminate()
             cp.executor.wait(1000)
-        if cp.worker and cp.worker.isRunning():
-            cp.worker.quit()
-            cp.worker.wait(2000)
-            cp.worker.terminate()
-            cp.worker.wait(1000)
+            cp.executor.terminate()
+        if cp.tool_worker and cp.tool_worker.isRunning():
+            cp.tool_worker.quit()
+            cp.tool_worker.wait(1000)
+            cp.tool_worker.terminate()
+        if cp.install_worker and cp.install_worker.isRunning():
+            cp.install_worker.quit()
+            cp.install_worker.wait(1000)
+            cp.install_worker.terminate()
         event.accept()
-        sys.exit(0)
+        os._exit(0)
