@@ -1,4 +1,6 @@
 import os
+import signal
+import time
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -10,6 +12,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStackedWidget,
     QMessageBox,
+    QApplication,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QCloseEvent
@@ -236,8 +239,7 @@ class MainWindow(QMainWindow):
         cp = self.check_page
         if cp.executor and cp.executor.isRunning():
             cp.executor.cancel()
-            cp.executor.wait(1000)
-            cp.executor.terminate()
+            cp.executor.wait(1200)
         if cp.tool_worker and cp.tool_worker.isRunning():
             cp.tool_worker.quit()
             cp.tool_worker.wait(1000)
@@ -246,5 +248,50 @@ class MainWindow(QMainWindow):
             cp.install_worker.quit()
             cp.install_worker.wait(1000)
             cp.install_worker.terminate()
+        app = QApplication.instance()
+        if app:
+            app.quit()
+        self._kill_descendant_processes()
         event.accept()
         os._exit(0)
+
+    def _kill_descendant_processes(self):
+        parent_pid = os.getpid()
+
+        def child_pids(ppid: int):
+            children = []
+            for entry in os.listdir("/proc"):
+                if not entry.isdigit():
+                    continue
+                stat_path = os.path.join("/proc", entry, "stat")
+                try:
+                    with open(stat_path, "r", encoding="utf-8") as f:
+                        fields = f.read().split()
+                    if len(fields) > 3 and int(fields[3]) == ppid:
+                        children.append(int(entry))
+                except (FileNotFoundError, ProcessLookupError, PermissionError, ValueError):
+                    continue
+            return children
+
+        to_visit = [parent_pid]
+        descendants = set()
+        while to_visit:
+            current = to_visit.pop()
+            for cpid in child_pids(current):
+                if cpid not in descendants:
+                    descendants.add(cpid)
+                    to_visit.append(cpid)
+
+        for pid in descendants:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+        time.sleep(0.15)
+
+        for pid in descendants:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass

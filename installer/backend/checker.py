@@ -45,9 +45,11 @@ def is_program_installed(program: str) -> bool:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=True,
+            timeout=5,
+            start_new_session=True,
         )
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return False
 
 
@@ -63,6 +65,7 @@ def get_version(program: str) -> Optional[str]:
                 text=True,
                 check=False,
                 timeout=10,
+                start_new_session=True,
             )
             if result.returncode == 0:
                 output = (result.stdout + result.stderr).strip()

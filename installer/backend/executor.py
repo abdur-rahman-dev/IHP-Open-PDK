@@ -1,6 +1,8 @@
 import os
+import signal
 import shutil
 import subprocess
+import time
 
 from PySide6.QtCore import QThread, Signal
 
@@ -19,9 +21,33 @@ class InstallExecutor(QThread):
         self.plan = plan
         self.steps: list[ExecStep] = []
         self._cancelled = False
+        self._current_proc: subprocess.Popen | None = None
 
     def cancel(self):
         self._cancelled = True
+        self._terminate_current_proc()
+
+    def _terminate_current_proc(self):
+        proc = self._current_proc
+        if not proc:
+            return
+        try:
+            if proc.poll() is None:
+                try:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                for _ in range(10):
+                    if proc.poll() is not None:
+                        break
+                    time.sleep(0.05)
+                if proc.poll() is None:
+                    try:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+        finally:
+            self._current_proc = None
 
     def run(self):
         self._build_steps()
@@ -40,8 +66,9 @@ class InstallExecutor(QThread):
                 step.status = ExecStepStatus.FAILED
                 step.detail = str(e)
                 self.step_finished.emit(i, step.label, False)
+        self._terminate_current_proc()
         any_fail = any(s.status == ExecStepStatus.FAILED for s in self.steps)
-        self.all_done.emit(not any_fail)
+        self.all_done.emit((not any_fail) and (not self._cancelled))
 
     def _build_steps(self):
         cfg = self.plan.config
@@ -200,24 +227,44 @@ class InstallExecutor(QThread):
         self.log_line.emit(f"  Appended {len(lines)} env vars to .bashrc")
         return True
 
-    def _run_cmd(self, cmd: str, cwd: str = None) -> tuple[bool, str]:
+    def _run_cmd(self, cmd: str, cwd: str | None = None) -> tuple[bool, str]:
+        proc = None
         try:
-            result = subprocess.run(
-                cmd, cwd=cwd, shell=True,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, timeout=600,
-            )
-            output = result.stdout.strip()
+            popen_kwargs = {
+                "shell": True,
+                "stdout": subprocess.PIPE,
+                "stderr": subprocess.STDOUT,
+                "text": True,
+                "start_new_session": True,
+            }
+            if cwd is not None:
+                popen_kwargs["cwd"] = cwd
+            proc = subprocess.Popen(cmd, **popen_kwargs)
+            self._current_proc = proc
+
+            waited = 0.0
+            while proc.poll() is None:
+                if self._cancelled:
+                    self.log_line.emit("  Command cancelled")
+                    self._terminate_current_proc()
+                    return False, "cancelled"
+                time.sleep(0.1)
+                waited += 0.1
+                if waited >= 600.0:
+                    self.log_line.emit("  Command timed out")
+                    self._terminate_current_proc()
+                    return False, "timeout"
+
+            output = (proc.stdout.read() if proc.stdout else "").strip()
             if output:
                 for line in output.split("\n")[:5]:
                     self.log_line.emit(f"  {line}")
-            return result.returncode == 0, output
-        except subprocess.TimeoutExpired:
-            self.log_line.emit("  Command timed out")
-            return False, "timeout"
+            return proc.returncode == 0, output
         except Exception as e:
             self.log_line.emit(f"  Error: {e}")
             return False, str(e)
+        finally:
+            self._current_proc = None
 
     def _compile_osdi(self, pdk_root: str, pdk: str, model_name: str) -> bool:
         va_dir = os.path.join(pdk_root, pdk, "libs.tech", "verilog-a")
@@ -319,4 +366,3 @@ class InstallExecutor(QThread):
                     pass
 
         return overall_ok
-

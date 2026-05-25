@@ -130,6 +130,7 @@ class CheckPage(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(False)
         self.progress_bar.hide()
         root.addWidget(self.progress_bar)
 
@@ -236,9 +237,8 @@ class CheckPage(QWidget):
     def start_tool_check(self):
         self.reset_view()
         self.progress_bar.show()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Checking tools... %p%")
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
         self.status_label.setText("Starting tool requirement checks...")
         self.hint_label.setText("Checking selected requirements...")
         self.hint_label.show()
@@ -256,11 +256,7 @@ class CheckPage(QWidget):
         })
 
     def _on_tool_progress(self, done: int, total: int):
-        if total <= 0:
-            self.progress_bar.setValue(100)
-            return
-        pct = int((done / total) * 100)
-        self.progress_bar.setValue(pct)
+        return
 
     def _on_tool_done(self, tools):
         if self.plan is None:
@@ -340,9 +336,8 @@ class CheckPage(QWidget):
             return
         self.reset_view()
         self.progress_bar.show()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setFormat("Installing... %p%")
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
         self.status_label.setText("Installing... please wait.")
         self.install_log.show()
 
@@ -357,21 +352,13 @@ class CheckPage(QWidget):
         self.status_label.setText(f"Step {idx + 1}: {label}")
 
     def _on_install_step_finished(self, idx: int, label: str, ok: bool):
-        if not self.executor:
-            return
-        total = len(self.executor.steps)
-        done = sum(
-            1
-            for s in self.executor.steps
-            if s.status in (ExecStepStatus.DONE, ExecStepStatus.FAILED)
-        )
-        pct = int((done / total) * 100) if total > 0 else 100
-        self.progress_bar.setValue(pct)
+        return
 
     def _on_install_log(self, line: str):
         self.install_log.append(line)
 
     def _on_install_done(self, success: bool):
+        self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         if self.executor:
             try:
