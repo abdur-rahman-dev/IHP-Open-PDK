@@ -29,6 +29,7 @@ VERSION_FLAGS = {
     "openvaf-r": ["--version"],
     "pip": ["--version"],
     "netgen": ["-noconsole quit"],
+    "openEMS": ["-h"],
 }
 
 SAFE_VERSION_TOOLS = set(VERSION_FLAGS.keys())

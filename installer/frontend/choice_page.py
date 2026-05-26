@@ -125,7 +125,7 @@ class ChoicePage(QWidget):
             "buildxyceplugin", "gnucap-mg-vams", "ngspice",
             "Xyce", "gnucap", "xschem",
             "qucs-s", "klayout", "magic",
-            "netgen",
+            "netgen", "openEMS",
         ]
         for i, tool in enumerate(all_tools):
             cb = QCheckBox(tool)
