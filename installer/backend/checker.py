@@ -16,10 +16,21 @@ from .models import (
     LayoutEditor,
 )
 
-SAFE_VERSION_TOOLS = {
-    "ngspice", "klayout", "xschem", "qucs-s", "Xyce", "gnucap",
-    "openvaf", "openvaf-r", "python3",
+VERSION_FLAGS = {
+    "ngspice": ["-v"],
+    "klayout": ["-v"],
+    "xschem": ["-v"],
+    "qucs-s": ["-v"],
+    "magic": ["--version"],
+    "Xyce": ["-v"],
+    "gnucap": ["-v"],
+    "python3": ["--version"],
+    "openvaf": ["--version"],
+    "openvaf-r": ["--version"],
+    "pip": ["--version"],
 }
+
+SAFE_VERSION_TOOLS = set(VERSION_FLAGS.keys())
 
 MIN_KLAYOUT_VERSION = "0.29.0"
 MIN_PYTHON_VERSION = "3.9"
@@ -56,7 +67,8 @@ def is_program_installed(program: str) -> bool:
 def get_version(program: str) -> Optional[str]:
     if program not in SAFE_VERSION_TOOLS:
         return None
-    for flag in ["--version", "-V"]:
+    flags = VERSION_FLAGS.get(program, ["--version", "-V"])
+    for flag in flags:
         try:
             result = subprocess.run(
                 [program, flag],
@@ -67,11 +79,15 @@ def get_version(program: str) -> Optional[str]:
                 timeout=10,
                 start_new_session=True,
             )
-            if result.returncode == 0:
-                output = (result.stdout + result.stderr).strip()
-                match = re.search(r"(\d+\.\d+[\.\d]*)", output)
-                if match:
-                    return match.group(1)
+            output = (result.stdout + result.stderr).strip()
+            if not output:
+                continue
+            match = re.search(r"(\d+\.\d+[\.\d]*)", output)
+            if match:
+                return match.group(1)
+            match = re.search(r"[a-zA-Z][\w]*-?(\d+)", output)
+            if match:
+                return match.group(1)
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
     return None
