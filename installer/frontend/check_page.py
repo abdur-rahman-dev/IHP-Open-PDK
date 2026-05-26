@@ -278,6 +278,7 @@ class CheckPage(QWidget):
         self.plan.tools = tools
 
         self.progress_bar.hide()
+        self.status_label.hide()
         self._populate_tools(tools)
 
         has_missing = any(not t.installed for t in tools)
@@ -331,7 +332,7 @@ class CheckPage(QWidget):
         self._populate_env(env_checks)
 
         self.progress_bar.hide()
-        self.status_label.setText("Environment check complete.")
+        self.status_label.hide()
         self.result_label.setText("Environment check results")
         self.result_label.setObjectName("result_ok")
         self.result_label.setStyle(self.result_label.style())
@@ -374,6 +375,7 @@ class CheckPage(QWidget):
     def _on_install_done(self, success: bool):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
+        self.status_label.hide()
         if self.executor:
             try:
                 self.executor.log_line.disconnect(self._on_install_log)
