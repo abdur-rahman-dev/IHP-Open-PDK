@@ -28,6 +28,7 @@ VERSION_FLAGS = {
     "openvaf": ["--version"],
     "openvaf-r": ["--version"],
     "pip": ["--version"],
+    "netgen": ["-noconsole quit"],
 }
 
 SAFE_VERSION_TOOLS = set(VERSION_FLAGS.keys())
@@ -71,7 +72,7 @@ def get_version(program: str) -> Optional[str]:
     for flag in flags:
         try:
             result = subprocess.run(
-                [program, flag],
+                [program] + flag.split(),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
