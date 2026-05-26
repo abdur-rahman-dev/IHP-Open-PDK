@@ -22,6 +22,7 @@ from PySide6.QtGui import QColor
 from installer.backend.models import (
     InstallPlan,
     ToolStatusEnum,
+    ToolInfo,
     InstallConfig,
     ExecStepStatus,
 )
@@ -53,24 +54,37 @@ class ToolCheckWorker(QThread):
     progress = Signal(int, int)
     done = Signal(list)
 
-    def __init__(self, config: InstallConfig, selected: list[str]):
+    def __init__(self, config: InstallConfig, extra_tools: list[str]):
         super().__init__()
         self.config = config
-        self.selected = selected
+        self.extra_tools = extra_tools
 
     def run(self):
-        all_tools = check_tools(self.config)
-        selected = {_canonical_tool_name(t) for t in self.selected}
-        tools = []
-        for t in all_tools:
-            canonical = _canonical_tool_name(t.name)
-            base = _canonical_tool_name(t.name.split("/")[0])
-            if canonical in selected or base in selected:
-                tools.append(t)
+        tools = check_tools(self.config)
+
+        checked_names = {_canonical_tool_name(t.name) for t in tools}
+        for raw in self.extra_tools:
+            canonical = _canonical_tool_name(raw)
+            if canonical in checked_names:
+                continue
+            if is_program_installed(raw.split("/")[0]):
+                ver = get_version(raw.split("/")[0])
+                tools.append(ToolInfo(
+                    name=raw, installed=True, version=ver,
+                    status=ToolStatusEnum.OK, required=False,
+                    category="extra", message="",
+                ))
+            else:
+                tools.append(ToolInfo(
+                    name=raw, installed=False,
+                    status=ToolStatusEnum.WARNING, required=False,
+                    category="extra", message="Not found",
+                ))
+            checked_names.add(canonical)
 
         total = len(tools)
         if total == 0:
-            self.status.emit("No tools selected for requirement check.")
+            self.status.emit("No tools to check.")
             self.progress.emit(0, 0)
             self.done.emit([])
             return
@@ -228,11 +242,11 @@ class CheckPage(QWidget):
         tools.add("pip")
         return list(tools)
 
-    def _selected_tools(self) -> list[str]:
-        selected = set(self._configured_tools())
-        if self.config.check_tools:
-            selected.update(self.config.tools_to_check)
-        return list(selected)
+    def _extra_tools(self) -> list[str]:
+        if not self.config.check_tools:
+            return []
+        configured = {_canonical_tool_name(t) for t in self._configured_tools()}
+        return [t for t in self.config.tools_to_check if _canonical_tool_name(t) not in configured]
 
     def start_tool_check(self):
         self.reset_view()
@@ -243,8 +257,8 @@ class CheckPage(QWidget):
         self.hint_label.setText("Checking selected requirements...")
         self.hint_label.show()
 
-        selected = self._selected_tools()
-        self.tool_worker = ToolCheckWorker(self.config, selected)
+        extra = self._extra_tools()
+        self.tool_worker = ToolCheckWorker(self.config, extra)
         self.tool_worker.status.connect(self.status_label.setText)
         self.tool_worker.progress.connect(self._on_tool_progress)
         self.tool_worker.done.connect(self._on_tool_done)
