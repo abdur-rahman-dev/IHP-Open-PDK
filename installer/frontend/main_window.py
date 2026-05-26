@@ -156,7 +156,8 @@ class MainWindow(QMainWindow):
             self.next_btn.setEnabled(False)
             self.next_btn.setStyle(self.next_btn.style())
         elif self.current_step == 2:
-            self.back_btn.hide()
+            self.back_btn.show()
+            self.back_btn.setEnabled(True)
             self.next_btn.show()
             self.next_btn.setText("Install")
             self.next_btn.setObjectName("install_btn")
@@ -220,6 +221,8 @@ class MainWindow(QMainWindow):
     def _on_back(self):
         if self.current_step == 1:
             self._go_to_step(0)
+        elif self.current_step == 2:
+            self._go_to_step(1)
 
     def _on_nav_state_changed(self, state: dict):
         if self.current_step not in (1, 2):
