@@ -106,6 +106,7 @@ class MainWindow(QMainWindow):
 
         self.back_btn = QPushButton("< Back")
         self.back_btn.setFixedWidth(100)
+        self.back_btn.setObjectName("back_btn")
         self.back_btn.clicked.connect(self._on_back)
         nav_lay.addWidget(self.back_btn)
 

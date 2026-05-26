@@ -156,6 +156,25 @@ QPushButton#close_btn:disabled {
     color: @text_dim@;
 }
 
+QPushButton#back_btn {
+    background-color: @btn_back_bg@;
+    color: @btn_back_text@;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 12px;
+    min-height: 20px;
+}
+
+QPushButton#back_btn:hover {
+    background-color: @btn_back_hover@;
+}
+
+QPushButton#back_btn:disabled {
+    background-color: @border@;
+    color: @text_dim@;
+}
+
 QLineEdit {
     background-color: @input_bg@;
     color: @text@;

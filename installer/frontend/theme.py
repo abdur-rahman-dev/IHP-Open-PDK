@@ -42,6 +42,9 @@ LIGHT_COLORS = {
     "btn_close_bg": "#C62828",
     "btn_close_hover": "#B71C1C",
     "btn_close_text": "#FFFFFF",
+    "btn_back_bg": "#5B9BD5",
+    "btn_back_hover": "#4A8AC4",
+    "btn_back_text": "#FFFFFF",
 }
 
 DARK_COLORS = {
@@ -79,6 +82,9 @@ DARK_COLORS = {
     "btn_close_bg": "#EF5350",
     "btn_close_hover": "#F38BA8",
     "btn_close_text": "#1E1E2E",
+    "btn_back_bg": "#5A7FB5",
+    "btn_back_hover": "#4A6FA5",
+    "btn_back_text": "#CDD6F4",
 }
 
 _THEMES = {
