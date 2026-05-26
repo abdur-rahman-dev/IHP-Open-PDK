@@ -84,7 +84,7 @@ def get_version(program: str) -> Optional[str]:
             output = (result.stdout + result.stderr).strip()
             if not output:
                 continue
-            match = re.search(r"(\d+\.\d+[\.\d]*[\w\-]*)", output)
+            match = re.search(r"(v?\d+\.\d+[\.\d]*[\w\-]*)", output)
             if match:
                 return match.group(1)
             match = re.search(r"[a-zA-Z][\w]*-?(\d+)", output)
