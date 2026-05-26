@@ -375,6 +375,7 @@ class CheckPage(QWidget):
     def _on_install_done(self, success: bool):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
+        self.progress_bar.hide()
         self.status_label.hide()
         if self.executor:
             try:
