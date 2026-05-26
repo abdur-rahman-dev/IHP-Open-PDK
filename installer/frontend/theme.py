@@ -163,21 +163,21 @@ def detect_system_theme() -> str:
     return "light"
 
 
-def _create_arrow_png(color_hex: str, path: Path):
-    pm = QPixmap(12, 8)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setBrush(QColor(color_hex))
-    p.setPen(Qt.PenStyle.NoPen)
-    triangle = QPolygonF([
-        QPointF(1, 1),
-        QPointF(11, 1),
-        QPointF(6, 7),
-    ])
-    p.drawPolygon(triangle)
-    p.end()
-    pm.save(str(path), "PNG")
+# def _create_arrow_png(color_hex: str, path: Path):
+#     pm = QPixmap(12, 8)
+#     pm.fill(Qt.GlobalColor.transparent)
+#     p = QPainter(pm)
+#     p.setRenderHint(QPainter.RenderHint.Antialiasing)
+#     p.setBrush(QColor(color_hex))
+#     p.setPen(Qt.PenStyle.NoPen)
+#     triangle = QPolygonF([
+#         QPointF(1, 1),
+#         QPointF(11, 1),
+#         QPointF(6, 7),
+#     ])
+#     p.drawPolygon(triangle)
+#     p.end()
+#     pm.save(str(path), "PNG")
 
 
 class ThemeManager(QObject):
@@ -230,8 +230,10 @@ class ThemeManager(QObject):
         self._current_theme = theme_name
         colors = _THEMES.get(theme_name, LIGHT_COLORS)
 
-        arrow_path = ASSETS_DIR / ".arrow.png"
-        _create_arrow_png(colors["text_secondary"], arrow_path)
+        if theme_name == "dark":
+            arrow_path = ASSETS_DIR / "arrow_dark.png"
+        else:
+            arrow_path = ASSETS_DIR / "arrow_light.png"
         extended = dict(colors)
         extended["arrow_icon"] = arrow_path.as_posix()
 
