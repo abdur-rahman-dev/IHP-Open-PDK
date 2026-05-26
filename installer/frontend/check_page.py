@@ -412,7 +412,7 @@ class CheckPage(QWidget):
             status_item.setForeground(self._get_status_color(t.status))
             self.tools_table.setItem(i, 1, status_item)
 
-            self.tools_table.setItem(i, 2, QTableWidgetItem(t.version or "---"))
+            self.tools_table.setItem(i, 2, QTableWidgetItem(t.version or "N/A"))
 
             path_widget = QWidget()
             path_lay = QHBoxLayout()
