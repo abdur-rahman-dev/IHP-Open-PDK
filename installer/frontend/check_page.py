@@ -156,11 +156,11 @@ class CheckPage(QWidget):
         tools_lay = QVBoxLayout()
         self.tools_table = QTableWidget()
         self.tools_table.verticalHeader().setVisible(False)
-        self.tools_table.setColumnCount(5)
+        self.tools_table.setColumnCount(4)
         self.tools_table.setHorizontalHeaderLabels(
-            ["Tool", "Status", "Version", "Custom Path", "Notes"]
+            ["Tool", "Status", "Version", "Custom Path"]
         )
-        for col in range(5):
+        for col in range(4):
             self.tools_table.horizontalHeader().setSectionResizeMode(
                 col, QHeaderView.ResizeMode.Stretch
             )
@@ -463,7 +463,6 @@ class CheckPage(QWidget):
                             self.theme_manager.get_color("status_ok")
                         )
                         self.tools_table.setItem(r, 2, QTableWidgetItem(ver))
-                        self.tools_table.setItem(r, 4, QTableWidgetItem(""))
                     else:
                         try:
                             env = os.environ.copy()
@@ -486,17 +485,13 @@ class CheckPage(QWidget):
                                 self.tools_table.item(r, 1).setForeground(
                                     self.theme_manager.get_color("status_ok")
                                 )
-                                self.tools_table.setItem(r, 4, QTableWidgetItem(f"Found: {found}"))
                             else:
                                 self.tools_table.setItem(r, 1, QTableWidgetItem("MISSING"))
                                 self.tools_table.item(r, 1).setForeground(
                                     self.theme_manager.get_color("status_error")
                                 )
-                                self.tools_table.setItem(
-                                    r, 4, QTableWidgetItem(f"Not found in {custom_dir}")
-                                )
                         except Exception:
-                            self.tools_table.setItem(r, 4, QTableWidgetItem("Re-check failed"))
+                            pass
 
                 return cb
 
@@ -514,7 +509,6 @@ class CheckPage(QWidget):
 
             path_widget.setLayout(path_lay)
             self.tools_table.setCellWidget(i, 3, path_widget)
-            self.tools_table.setItem(i, 4, QTableWidgetItem(t.message))
 
     def _populate_env(self, env_checks):
         if not env_checks:
