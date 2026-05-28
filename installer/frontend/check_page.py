@@ -164,6 +164,7 @@ class CheckPage(QWidget):
         for i, tool in enumerate(self.ALL_TC_TOOLS):
             cb = QCheckBox(tool)
             cb.setChecked(False)
+            cb.toggled.connect(self._on_tc_check_toggled)
             self.tc_checks[tool] = cb
             r, c = divmod(i, 3)
             tc_tools_grid.addWidget(cb, r, c)
@@ -281,6 +282,16 @@ class CheckPage(QWidget):
             if base in eda_tools or tool in eda_tools:
                 cb.setChecked(True)
 
+    def _any_tc_selected(self) -> bool:
+        return any(cb.isChecked() for cb in self.tc_checks.values())
+
+    def _on_tc_check_toggled(self):
+        if self._tc_phase == "selection":
+            self.nav_state_changed.emit({
+                "next_enabled": self._any_tc_selected(),
+                "next_text": "Check",
+            })
+
     def _configured_tools(self) -> list[str]:
         tools = set()
         for sim in self.config.simulators:
@@ -322,7 +333,7 @@ class CheckPage(QWidget):
         self.hint_label.show()
 
         self.nav_state_changed.emit({
-            "next_enabled": True,
+            "next_enabled": self._any_tc_selected(),
             "next_text": "Check",
         })
 
