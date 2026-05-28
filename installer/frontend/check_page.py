@@ -438,6 +438,7 @@ class CheckPage(QWidget):
         self.nav_state_changed.emit({
             "next_enabled": can_install,
             "next_text": "Install",
+            "back_enabled": True,
         })
 
     def start_install(self):
@@ -465,6 +466,7 @@ class CheckPage(QWidget):
         self.nav_state_changed.emit({
             "next_enabled": False,
             "next_text": "Install",
+            "back_enabled": False,
         })
 
     def _on_install_step_started(self, idx: int, label: str):
@@ -498,6 +500,7 @@ class CheckPage(QWidget):
         self.nav_state_changed.emit({
             "next_enabled": False,
             "next_text": "",
+            "back_enabled": False,
         })
 
     def _get_status_color(self, status: ToolStatusEnum) -> QColor:

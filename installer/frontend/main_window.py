@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
         names = [
             "Configuration",
             "Tool Requirements Check",
-            "Environment & Install",
+            "Install",
         ]
         return names[idx]
 
@@ -162,7 +162,8 @@ class MainWindow(QMainWindow):
             self.next_btn.setEnabled(False)
             self.next_btn.setStyle(self.next_btn.style())
         else:
-            self.back_btn.hide()
+            self.back_btn.show()
+            self.back_btn.setEnabled(False)
             self.next_btn.hide()
 
     def _go_to_step(self, step: int):
@@ -220,6 +221,8 @@ class MainWindow(QMainWindow):
     def _on_back(self):
         if self.current_step == 1:
             self._go_to_step(0)
+        elif self.current_step == 2:
+            self._go_to_step(1)
 
     def _on_skip_tool_check_toggled(self, skip: bool):
         if self.current_step == 0:
@@ -247,6 +250,8 @@ class MainWindow(QMainWindow):
                 else:
                     self.next_btn.setObjectName("")
                 self.next_btn.setStyle(self.next_btn.style())
+        if "back_enabled" in state:
+            self.back_btn.setEnabled(bool(state["back_enabled"]))
 
     def closeEvent(self, event: QCloseEvent):
         cp = self.check_page
