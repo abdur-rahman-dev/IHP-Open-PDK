@@ -72,7 +72,7 @@ class ChoicePage(QWidget):
         row += 1
 
         ic_group = QGroupBox("Install Config")
-        ic_lay = QHBoxLayout()
+        ic_lay = QVBoxLayout()
         self.compile_va_cb = QCheckBox("Compile Verilog-A")
         self.compile_va_cb.setChecked(True)
         self.mode_btn_group.buttonClicked.connect(self._on_mode_changed)
@@ -81,7 +81,6 @@ class ChoicePage(QWidget):
         self.skip_checks_cb.setChecked(False)
         self.skip_checks_cb.toggled.connect(self.skip_checks_changed.emit)
         ic_lay.addWidget(self.skip_checks_cb)
-        ic_lay.addStretch()
         ic_group.setLayout(ic_lay)
         grid.addWidget(ic_group, row, 0, 1, 2)
         row += 1
