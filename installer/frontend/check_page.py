@@ -445,7 +445,7 @@ class CheckPage(QWidget):
         if not self.plan:
             self.plan = build_install_plan(self.config)
 
-        self.env_group.show()
+        self.env_group.hide()
         self.install_result_label.hide()
         self.hint_label.hide()
         self.result_label.hide()
