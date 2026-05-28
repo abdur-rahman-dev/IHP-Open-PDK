@@ -15,6 +15,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QFileDialog,
     QTextEdit,
+    QCheckBox,
+    QScrollArea,
+    QGridLayout,
 )
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QColor
@@ -25,6 +28,9 @@ from installer.backend.models import (
     ToolInfo,
     InstallConfig,
     ExecStepStatus,
+    Simulator,
+    SchematicEditor,
+    LayoutEditor,
 )
 from installer.backend.checker import (
     check_tools,
@@ -122,6 +128,14 @@ class InstallWorker(QThread):
 class CheckPage(QWidget):
     nav_state_changed = Signal(dict)
 
+    ALL_TC_TOOLS = [
+        "python3", "pip", "openvaf/openvaf-r",
+        "buildxyceplugin", "gnucap-mg-vams", "ngspice",
+        "Xyce", "gnucap", "xschem",
+        "qucs-s", "klayout", "magic",
+        "netgen", "openEMS",
+    ]
+
     def __init__(self, config: InstallConfig, theme_manager, parent=None):
         super().__init__(parent)
         self.config = config
@@ -135,6 +149,37 @@ class CheckPage(QWidget):
     def _build_ui(self):
         root = QVBoxLayout(self)
         root.setSpacing(12)
+
+        self.tc_section = QWidget()
+        tc_outer = QVBoxLayout()
+        tc_outer.setContentsMargins(0, 0, 0, 0)
+        tc_outer.setSpacing(6)
+        self.tc_enable = QCheckBox("Requirement check for EDA tool")
+        self.tc_enable.setChecked(False)
+        self.tc_enable.toggled.connect(self._on_tc_toggled)
+        tc_outer.addWidget(self.tc_enable)
+
+        tc_tools_inner = QWidget()
+        tc_tools_grid = QGridLayout()
+        tc_tools_grid.setContentsMargins(20, 4, 4, 4)
+        tc_tools_grid.setSpacing(4)
+        self.tc_checks = {}
+        for i, tool in enumerate(self.ALL_TC_TOOLS):
+            cb = QCheckBox(tool)
+            cb.setChecked(False)
+            self.tc_checks[tool] = cb
+            r, c = divmod(i, 3)
+            tc_tools_grid.addWidget(cb, r, c)
+        tc_tools_inner.setLayout(tc_tools_grid)
+
+        self.tc_scroll = QScrollArea()
+        self.tc_scroll.setWidget(tc_tools_inner)
+        self.tc_scroll.setWidgetResizable(True)
+        self.tc_scroll.setMaximumHeight(150)
+        self.tc_scroll.hide()
+        tc_outer.addWidget(self.tc_scroll)
+        self.tc_section.setLayout(tc_outer)
+        root.addWidget(self.tc_section)
 
         self.result_label = QLabel("")
         self.result_label.setAlignment(Qt.AlignCenter)
@@ -209,16 +254,40 @@ class CheckPage(QWidget):
         root.addWidget(self.hint_label)
 
     def reset_view(self):
+        self.tc_section.hide()
         self.result_label.hide()
         self.progress_bar.hide()
         self.progress_bar.setValue(0)
         self.status_label.setText("Preparing...")
+        self.status_label.show()
         self.tools_group.hide()
         self.env_group.hide()
         self.install_log.hide()
         self.install_log.clear()
         self.install_result_label.hide()
         self.hint_label.hide()
+
+    def _on_tc_toggled(self, checked):
+        self.tc_scroll.setVisible(checked)
+        if checked:
+            self._sync_tc_from_eda()
+
+    def _sync_tc_from_eda(self):
+        eda_tools = set()
+        for sim in self.config.simulators:
+            eda_tools.add(sim.value)
+            if sim == Simulator.XYCE:
+                eda_tools.add("buildxyceplugin")
+            elif sim == Simulator.GNUCAP:
+                eda_tools.add("gnucap-mg-vams")
+        for ed in self.config.schematic_editors:
+            eda_tools.add(ed.value)
+        for ed in self.config.layout_editors:
+            eda_tools.add(ed.value)
+        for tool, cb in self.tc_checks.items():
+            base = tool.split("/")[0]
+            if base in eda_tools or tool in eda_tools:
+                cb.setChecked(True)
 
     def _configured_tools(self) -> list[str]:
         tools = set()
@@ -243,13 +312,19 @@ class CheckPage(QWidget):
         return list(tools)
 
     def _extra_tools(self) -> list[str]:
-        if not self.config.check_tools:
+        if not self.tc_enable.isChecked():
             return []
         configured = {_canonical_tool_name(t) for t in self._configured_tools()}
-        return [t for t in self.config.tools_to_check if _canonical_tool_name(t) not in configured]
+        return [
+            t for t in self.tc_checks
+            if self.tc_checks[t].isChecked()
+            and _canonical_tool_name(t) not in configured
+        ]
 
     def start_tool_check(self):
         self.reset_view()
+        self.tc_section.show()
+        self._sync_tc_from_eda()
         self.progress_bar.show()
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setTextVisible(False)
@@ -258,6 +333,11 @@ class CheckPage(QWidget):
         self.hint_label.show()
 
         extra = self._extra_tools()
+        self.config.check_tools = self.tc_enable.isChecked()
+        self.config.tools_to_check = [
+            t for t, cb in self.tc_checks.items() if cb.isChecked()
+        ]
+
         self.tool_worker = ToolCheckWorker(self.config, extra)
         self.tool_worker.status.connect(self.status_label.setText)
         self.tool_worker.progress.connect(self._on_tool_progress)
@@ -312,22 +392,23 @@ class CheckPage(QWidget):
             self.result_label.setStyle(self.result_label.style())
             can_next = False
 
-        self.hint_label.setText("Click Next to continue to environment checks.")
+        self.hint_label.setText("Click Next to continue to environment checks and install.")
         self.hint_label.show()
         self.nav_state_changed.emit({
             "next_enabled": can_next,
             "next_text": "Next >",
         })
 
-    def start_env_check(self):
+    def start_env_and_install(self):
+        if not self.plan:
+            self.plan = build_install_plan(self.config)
+
         self.reset_view()
         self.status_label.setText("Checking environment variables...")
         self.progress_bar.show()
         self.progress_bar.setRange(0, 0)
 
         env_checks = check_environment(self.config)
-        if self.plan is None:
-            self.plan = build_install_plan(self.config)
         self.plan.env_checks = env_checks
         self._populate_env(env_checks)
 
@@ -362,11 +443,16 @@ class CheckPage(QWidget):
     def start_install(self):
         if not self.plan:
             self.plan = build_install_plan(self.config)
-        self.reset_view()
+
+        self.env_group.show()
+        self.install_result_label.hide()
+        self.hint_label.hide()
+        self.result_label.hide()
         self.progress_bar.show()
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setTextVisible(False)
         self.status_label.setText("Installing... please wait.")
+        self.status_label.show()
         self.install_log.show()
 
         self.executor = InstallExecutor(self.plan)
@@ -375,6 +461,11 @@ class CheckPage(QWidget):
         self.executor.log_line.connect(self._on_install_log)
         self.executor.all_done.connect(self._on_install_done)
         self.executor.start()
+
+        self.nav_state_changed.emit({
+            "next_enabled": False,
+            "next_text": "Install",
+        })
 
     def _on_install_step_started(self, idx: int, label: str):
         self.status_label.setText(f"Step {idx + 1}: {label}")
@@ -396,15 +487,18 @@ class CheckPage(QWidget):
             except (TypeError, RuntimeError):
                 pass
         if success:
-            self.status_label.setText("Installation complete.")
             self.install_result_label.setText("Installation completed successfully!")
             self.install_result_label.setObjectName("result_ok")
         else:
-            self.status_label.setText("Installation failed.")
             self.install_result_label.setText("Installation failed. Review the log below.")
             self.install_result_label.setObjectName("result_error")
         self.install_result_label.setStyle(self.install_result_label.style())
         self.install_result_label.show()
+
+        self.nav_state_changed.emit({
+            "next_enabled": False,
+            "next_text": "",
+        })
 
     def _get_status_color(self, status: ToolStatusEnum) -> QColor:
         if status == ToolStatusEnum.OK:

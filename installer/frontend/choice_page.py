@@ -1,9 +1,9 @@
 import os
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QRadioButton,
+    QWidget, QVBoxLayout, QHBoxLayout, QRadioButton,
     QCheckBox, QButtonGroup, QLineEdit, QPushButton, QGroupBox,
-    QFileDialog, QGridLayout, QScrollArea,
+    QFileDialog, QGridLayout,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -13,13 +13,13 @@ from installer.backend.models import (
 )
 
 PDK_OPTIONS = [
-    ("ihp-sg13g2", "SG13G2 (130nm)", True),
+    ("ihp-sg13g2", "SG13G2", True),
     ("ihp-sg13cmos5l", "SG13CMOS5L", False),
 ]
 
 
 class ChoicePage(QWidget):
-    skip_checks_changed = Signal(bool)
+    skip_tool_check_changed = Signal(bool)
 
     PDK_DIR_MAP = {
         "ihp-sg13g2": "ihp-sg13g2",
@@ -41,7 +41,7 @@ class ChoicePage(QWidget):
         grid.setVerticalSpacing(10)
         row = 0
 
-        pdk_group = QGroupBox("PDK Selection")
+        pdk_group = QGroupBox("PDK")
         pdk_lay = QHBoxLayout()
         self.pdk_btn_group = QButtonGroup(self)
         for i, (val, label, default) in enumerate(PDK_OPTIONS):
@@ -77,15 +77,15 @@ class ChoicePage(QWidget):
         self.compile_va_cb.setChecked(True)
         self.mode_btn_group.buttonClicked.connect(self._on_mode_changed)
         ic_lay.addWidget(self.compile_va_cb)
-        self.skip_checks_cb = QCheckBox("Skip all checks")
-        self.skip_checks_cb.setChecked(False)
-        self.skip_checks_cb.toggled.connect(self.skip_checks_changed.emit)
-        ic_lay.addWidget(self.skip_checks_cb)
+        self.skip_tool_check_cb = QCheckBox("Skip tool check")
+        self.skip_tool_check_cb.setChecked(False)
+        self.skip_tool_check_cb.toggled.connect(self.skip_tool_check_changed.emit)
+        ic_lay.addWidget(self.skip_tool_check_cb)
         ic_group.setLayout(ic_lay)
         grid.addWidget(ic_group, row, 0, 1, 2)
         row += 1
 
-        eda_group = QGroupBox("Config EDA")
+        eda_group = QGroupBox("EDA Config")
         eda_grid = QGridLayout()
         eda_grid.setSpacing(8)
 
@@ -122,44 +122,6 @@ class ChoicePage(QWidget):
 
         eda_group.setLayout(eda_grid)
         grid.addWidget(eda_group, row, 0, 1, 2)
-        row += 1
-
-        tc_group = QGroupBox("Tool Check")
-        tc_lay = QVBoxLayout()
-        self.tc_enable = QCheckBox("Requirement check for EDA tool")
-        self.tc_enable.setChecked(False)
-        self.tc_enable.toggled.connect(self._on_tc_toggled)
-        tc_lay.addWidget(self.tc_enable)
-
-        tc_tools_inner = QWidget()
-        tc_tools_grid = QGridLayout()
-        tc_tools_grid.setContentsMargins(20, 4, 4, 4)
-        tc_tools_grid.setSpacing(4)
-        self.tc_checks = {}
-        all_tools = [
-            "python3", "pip", "openvaf/openvaf-r",
-            "buildxyceplugin", "gnucap-mg-vams", "ngspice",
-            "Xyce", "gnucap", "xschem",
-            "qucs-s", "klayout", "magic",
-            "netgen", "openEMS",
-        ]
-        for i, tool in enumerate(all_tools):
-            cb = QCheckBox(tool)
-            cb.setChecked(False)
-            self.tc_checks[tool] = cb
-            r, c = divmod(i, 3)
-            tc_tools_grid.addWidget(cb, r, c)
-        tc_tools_inner.setLayout(tc_tools_grid)
-
-        tc_scroll = QScrollArea()
-        tc_scroll.setWidget(tc_tools_inner)
-        tc_scroll.setWidgetResizable(True)
-        tc_scroll.setMaximumHeight(150)
-        tc_scroll.hide()
-        self.tc_tools_widget = tc_scroll
-        tc_lay.addWidget(tc_scroll)
-        tc_group.setLayout(tc_lay)
-        grid.addWidget(tc_group, row, 0, 1, 2)
         row += 1
 
         dir_group = QGroupBox("Installation Directory")
@@ -201,33 +163,6 @@ class ChoicePage(QWidget):
         subdir = self.PDK_DIR_MAP.get(pdk, pdk)
         self.dir_input.setText(os.path.join(self._base_dir, subdir))
 
-    def _on_tc_toggled(self, checked):
-        self.tc_tools_widget.setVisible(checked)
-        if checked:
-            self._sync_tc_from_eda()
-
-    def _sync_tc_from_eda(self):
-        eda_tools = set()
-        for sim, cb in self.sim_checks.items():
-            if cb.isChecked():
-                eda_tools.add(sim.value)
-                if sim == Simulator.NGSPICE:
-                    pass
-                elif sim == Simulator.XYCE:
-                    eda_tools.add("buildxyceplugin")
-                elif sim == Simulator.GNUCAP:
-                    eda_tools.add("gnucap-mg-vams")
-        for ed, cb in self.sch_checks.items():
-            if cb.isChecked():
-                eda_tools.add(ed.value)
-        for ed, cb in self.lay_checks.items():
-            if cb.isChecked():
-                eda_tools.add(ed.value)
-        for tool, cb in self.tc_checks.items():
-            base = tool.split("/")[0]
-            if base in eda_tools or tool in eda_tools:
-                cb.setChecked(True)
-
     def _on_browse(self):
         d = QFileDialog.getExistingDirectory(self, "Select Installation Directory")
         if d:
@@ -259,11 +194,7 @@ class ChoicePage(QWidget):
             self.dir_input.text().strip() or None
         )
 
-        self.config.check_tools = self.tc_enable.isChecked()
-        self.config.tools_to_check = [
-            t for t, cb in self.tc_checks.items() if cb.isChecked()
-        ]
         self.config.compile_verilog_a = self.compile_va_cb.isChecked()
-        self.config.skip_all_checks = self.skip_checks_cb.isChecked()
+        self.config.skip_tool_check = self.skip_tool_check_cb.isChecked()
 
         return self.config
