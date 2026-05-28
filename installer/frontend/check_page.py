@@ -345,7 +345,7 @@ class CheckPage(QWidget):
             if not os.path.isdir(osdi_dir) or not os.listdir(osdi_dir):
                 self.result_label.setText(
                     "Warning: Verilog-A compilation skipped but OSDI models not found.\n"
-                    "ngspice simulations may not work."
+                    "Some simulations may not work."
                 )
                 self.result_label.setObjectName("result_warn")
                 self.result_label.setStyle(self.result_label.style())
