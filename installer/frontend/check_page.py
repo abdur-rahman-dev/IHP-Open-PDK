@@ -144,6 +144,7 @@ class CheckPage(QWidget):
         self.tool_worker: ToolCheckWorker | None = None
         self.install_worker: InstallWorker | None = None
         self.executor: InstallExecutor | None = None
+        self._tc_phase = "selection"
         self._build_ui()
 
     def _build_ui(self):
@@ -154,10 +155,6 @@ class CheckPage(QWidget):
         tc_outer = QVBoxLayout()
         tc_outer.setContentsMargins(0, 0, 0, 0)
         tc_outer.setSpacing(6)
-        self.tc_enable = QCheckBox("Requirement check for EDA tool")
-        self.tc_enable.setChecked(False)
-        self.tc_enable.toggled.connect(self._on_tc_toggled)
-        tc_outer.addWidget(self.tc_enable)
 
         tc_tools_inner = QWidget()
         tc_tools_grid = QGridLayout()
@@ -176,7 +173,6 @@ class CheckPage(QWidget):
         self.tc_scroll.setWidget(tc_tools_inner)
         self.tc_scroll.setWidgetResizable(True)
         self.tc_scroll.setMaximumHeight(150)
-        self.tc_scroll.hide()
         tc_outer.addWidget(self.tc_scroll)
         self.tc_section.setLayout(tc_outer)
         root.addWidget(self.tc_section)
@@ -261,16 +257,12 @@ class CheckPage(QWidget):
         self.status_label.setText("Preparing...")
         self.status_label.show()
         self.tools_group.hide()
+        self.tools_table.hide()
         self.env_group.hide()
         self.install_log.hide()
         self.install_log.clear()
         self.install_result_label.hide()
         self.hint_label.hide()
-
-    def _on_tc_toggled(self, checked):
-        self.tc_scroll.setVisible(checked)
-        if checked:
-            self._sync_tc_from_eda()
 
     def _sync_tc_from_eda(self):
         eda_tools = set()
@@ -312,8 +304,6 @@ class CheckPage(QWidget):
         return list(tools)
 
     def _extra_tools(self) -> list[str]:
-        if not self.tc_enable.isChecked():
-            return []
         configured = {_canonical_tool_name(t) for t in self._configured_tools()}
         return [
             t for t in self.tc_checks
@@ -321,23 +311,37 @@ class CheckPage(QWidget):
             and _canonical_tool_name(t) not in configured
         ]
 
-    def start_tool_check(self):
+    def show_tool_selection(self):
         self.reset_view()
+        self._tc_phase = "selection"
         self.tc_section.show()
+        self.tc_scroll.show()
         self._sync_tc_from_eda()
+        self.status_label.hide()
+        self.hint_label.setText("Select tools to check, then click Check.")
+        self.hint_label.show()
+
+        self.nav_state_changed.emit({
+            "next_enabled": True,
+            "next_text": "Check",
+        })
+
+    def run_tool_check(self):
+        self._tc_phase = "checking"
+        self.tc_section.hide()
         self.progress_bar.show()
         self.progress_bar.setRange(0, 0)
         self.progress_bar.setTextVisible(False)
         self.status_label.setText("Starting tool requirement checks...")
+        self.status_label.show()
         self.hint_label.setText("Checking selected requirements...")
         self.hint_label.show()
 
-        extra = self._extra_tools()
-        self.config.check_tools = self.tc_enable.isChecked()
         self.config.tools_to_check = [
             t for t, cb in self.tc_checks.items() if cb.isChecked()
         ]
 
+        extra = self._extra_tools()
         self.tool_worker = ToolCheckWorker(self.config, extra)
         self.tool_worker.status.connect(self.status_label.setText)
         self.tool_worker.progress.connect(self._on_tool_progress)
@@ -346,13 +350,14 @@ class CheckPage(QWidget):
 
         self.nav_state_changed.emit({
             "next_enabled": False,
-            "next_text": "Next >",
+            "next_text": "Check",
         })
 
     def _on_tool_progress(self, done: int, total: int):
         return
 
     def _on_tool_done(self, tools):
+        self._tc_phase = "report"
         if self.plan is None:
             self.plan = build_install_plan(self.config)
         self.plan.tools = tools
@@ -392,7 +397,7 @@ class CheckPage(QWidget):
             self.result_label.setStyle(self.result_label.style())
             can_next = False
 
-        self.hint_label.setText("Click Next to continue to environment checks and install.")
+        self.hint_label.setText("Click Next to continue to install.")
         self.hint_label.show()
         self.nav_state_changed.emit({
             "next_enabled": can_next,

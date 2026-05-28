@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
         self._update_ui_for_step()
 
         if step == 1:
-            self.check_page.start_tool_check()
+            self.check_page.show_tool_selection()
         elif step == 2:
             self.check_page.start_env_and_install()
 
@@ -214,7 +214,10 @@ class MainWindow(QMainWindow):
             else:
                 self._go_to_step(1)
         elif self.current_step == 1:
-            self._go_to_step(2)
+            if self.check_page._tc_phase == "selection":
+                self.check_page.run_tool_check()
+            else:
+                self._go_to_step(2)
         elif self.current_step == 2:
             self.check_page.start_install()
 

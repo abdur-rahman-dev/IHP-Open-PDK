@@ -71,7 +71,6 @@ class InstallConfig:
     install_mode: InstallMode = InstallMode.NEW
     install_dir: Optional[str] = None
     pdk_root: Optional[str] = None
-    check_tools: bool = False
     tools_to_check: list[str] = field(default_factory=list)
     compile_verilog_a: bool = True
     skip_tool_check: bool = False
