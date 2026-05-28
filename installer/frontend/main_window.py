@@ -124,6 +124,7 @@ class MainWindow(QMainWindow):
         root.addLayout(nav_lay)
 
         self.check_page.nav_state_changed.connect(self._on_nav_state_changed)
+        self.choice_page.skip_checks_changed.connect(self._on_skip_checks_toggled)
         self._update_ui_for_step()
 
     def _step_name(self, idx: int) -> str:
@@ -213,7 +214,10 @@ class MainWindow(QMainWindow):
                         f"Cannot create directory: {config.install_dir}",
                     )
                     return
-            self._go_to_step(1)
+            if config.skip_all_checks:
+                self._go_to_step(3)
+            else:
+                self._go_to_step(1)
         elif self.current_step == 1:
             self._go_to_step(2)
         elif self.current_step == 2:
@@ -224,6 +228,16 @@ class MainWindow(QMainWindow):
             self._go_to_step(0)
         elif self.current_step == 2:
             self._go_to_step(1)
+
+    def _on_skip_checks_toggled(self, skip: bool):
+        if self.current_step == 0:
+            if skip:
+                self.next_btn.setText("Install")
+                self.next_btn.setObjectName("install_btn")
+            else:
+                self.next_btn.setText("Next >")
+                self.next_btn.setObjectName("")
+            self.next_btn.setStyle(self.next_btn.style())
 
     def _on_nav_state_changed(self, state: dict):
         if self.current_step not in (1, 2):

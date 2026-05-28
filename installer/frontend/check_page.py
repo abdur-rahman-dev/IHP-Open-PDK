@@ -361,7 +361,7 @@ class CheckPage(QWidget):
 
     def start_install(self):
         if not self.plan:
-            return
+            self.plan = build_install_plan(self.config)
         self.reset_view()
         self.progress_bar.show()
         self.progress_bar.setRange(0, 0)

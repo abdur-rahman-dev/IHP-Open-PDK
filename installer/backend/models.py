@@ -74,6 +74,7 @@ class InstallConfig:
     check_tools: bool = False
     tools_to_check: list[str] = field(default_factory=list)
     compile_verilog_a: bool = True
+    skip_all_checks: bool = False
 
     def _normalize_root_from_install_dir(self, path: str) -> str:
         import os

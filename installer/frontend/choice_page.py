@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QButtonGroup, QLineEdit, QPushButton, QGroupBox,
     QFileDialog, QGridLayout, QScrollArea,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 
 from installer.backend.models import (
     InstallConfig, PDKChoice, Simulator, SchematicEditor,
@@ -19,6 +19,8 @@ PDK_OPTIONS = [
 
 
 class ChoicePage(QWidget):
+    skip_checks_changed = Signal(bool)
+
     PDK_DIR_MAP = {
         "ihp-sg13g2": "ihp-sg13g2",
         "ihp-sg13cmos5l": "ihp-sg13cmos5l",
@@ -67,6 +69,21 @@ class ChoicePage(QWidget):
         mode_lay.addWidget(self.mode_change)
         mode_group.setLayout(mode_lay)
         grid.addWidget(mode_group, row, 0, 1, 2)
+        row += 1
+
+        ic_group = QGroupBox("Install Config")
+        ic_lay = QHBoxLayout()
+        self.compile_va_cb = QCheckBox("Compile Verilog-A")
+        self.compile_va_cb.setChecked(True)
+        self.mode_btn_group.buttonClicked.connect(self._on_mode_changed)
+        ic_lay.addWidget(self.compile_va_cb)
+        self.skip_checks_cb = QCheckBox("Skip all checks")
+        self.skip_checks_cb.setChecked(False)
+        self.skip_checks_cb.toggled.connect(self.skip_checks_changed.emit)
+        ic_lay.addWidget(self.skip_checks_cb)
+        ic_lay.addStretch()
+        ic_group.setLayout(ic_lay)
+        grid.addWidget(ic_group, row, 0, 1, 2)
         row += 1
 
         eda_group = QGroupBox("Config EDA")
@@ -144,17 +161,6 @@ class ChoicePage(QWidget):
         tc_lay.addWidget(tc_scroll)
         tc_group.setLayout(tc_lay)
         grid.addWidget(tc_group, row, 0, 1, 2)
-        row += 1
-
-        ic_group = QGroupBox("Install Config")
-        ic_lay = QHBoxLayout()
-        self.compile_va_cb = QCheckBox("Compile Verilog-A")
-        self.compile_va_cb.setChecked(True)
-        self.mode_btn_group.buttonClicked.connect(self._on_mode_changed)
-        ic_lay.addWidget(self.compile_va_cb)
-        ic_lay.addStretch()
-        ic_group.setLayout(ic_lay)
-        grid.addWidget(ic_group, row, 0, 1, 2)
         row += 1
 
         dir_group = QGroupBox("Installation Directory")
@@ -259,5 +265,6 @@ class ChoicePage(QWidget):
             t for t, cb in self.tc_checks.items() if cb.isChecked()
         ]
         self.config.compile_verilog_a = self.compile_va_cb.isChecked()
+        self.config.skip_all_checks = self.skip_checks_cb.isChecked()
 
         return self.config
