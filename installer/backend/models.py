@@ -73,6 +73,7 @@ class InstallConfig:
     pdk_root: Optional[str] = None
     check_tools: bool = False
     tools_to_check: list[str] = field(default_factory=list)
+    compile_verilog_a: bool = True
 
     def _normalize_root_from_install_dir(self, path: str) -> str:
         import os

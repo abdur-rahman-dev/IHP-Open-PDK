@@ -337,6 +337,19 @@ class CheckPage(QWidget):
         self.result_label.setObjectName("result_ok")
         self.result_label.setStyle(self.result_label.style())
         self.result_label.show()
+
+        if not self.config.compile_verilog_a:
+            pdk_root = self.config.get_target_pdk_root()
+            pdk = self.config.pdk.value
+            osdi_dir = os.path.join(pdk_root, pdk, "libs.tech", "ngspice", "osdi")
+            if not os.path.isdir(osdi_dir) or not os.listdir(osdi_dir):
+                self.result_label.setText(
+                    "Warning: Verilog-A compilation skipped but OSDI models not found.\n"
+                    "ngspice simulations may not work."
+                )
+                self.result_label.setObjectName("result_warn")
+                self.result_label.setStyle(self.result_label.style())
+
         self.hint_label.setText("Click Install to proceed.")
         self.hint_label.show()
 

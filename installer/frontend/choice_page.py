@@ -146,6 +146,17 @@ class ChoicePage(QWidget):
         grid.addWidget(tc_group, row, 0, 1, 2)
         row += 1
 
+        ic_group = QGroupBox("Install Config")
+        ic_lay = QHBoxLayout()
+        self.compile_va_cb = QCheckBox("Compile Verilog-A")
+        self.compile_va_cb.setChecked(True)
+        self.mode_btn_group.buttonClicked.connect(self._on_mode_changed)
+        ic_lay.addWidget(self.compile_va_cb)
+        ic_lay.addStretch()
+        ic_group.setLayout(ic_lay)
+        grid.addWidget(ic_group, row, 0, 1, 2)
+        row += 1
+
         dir_group = QGroupBox("Installation Directory")
         dir_lay = QHBoxLayout()
         self.dir_input = QLineEdit()
@@ -174,6 +185,9 @@ class ChoicePage(QWidget):
 
     def _on_pdk_changed(self, btn):
         self._update_dir_for_pdk()
+
+    def _on_mode_changed(self, btn):
+        self.compile_va_cb.setChecked(self.mode_new.isChecked())
 
     def _update_dir_for_pdk(self):
         if not self._base_dir:
@@ -244,5 +258,6 @@ class ChoicePage(QWidget):
         self.config.tools_to_check = [
             t for t, cb in self.tc_checks.items() if cb.isChecked()
         ]
+        self.config.compile_verilog_a = self.compile_va_cb.isChecked()
 
         return self.config

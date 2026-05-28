@@ -84,32 +84,33 @@ class InstallExecutor(QThread):
         self.steps.append(ExecStep("Set environment variables in .bashrc"))
         self.steps.append(ExecStep("Create .spiceinit symlink"))
 
-        openvaf_tool = next(
-            (t for t in self.plan.tools if t.name in ("openvaf", "openvaf-r")),
-            None,
-        )
-        if openvaf_tool and openvaf_tool.installed:
-            for model in OSDI_MODELS:
-                osdi_path = os.path.join(
-                    pdk_root, pdk, "libs.tech", "ngspice", "osdi", f"{model['name']}.osdi"
-                )
-                if not os.path.exists(osdi_path):
-                    self.steps.append(ExecStep(f"Compile OSDI: {model['name']}.osdi"))
-
-        from .checker import Simulator
-        if Simulator.XYCE in cfg.simulators:
-            xyce_ok = any(t.name == "Xyce" and t.installed for t in self.plan.tools)
-            bxp_ok = any(t.name == "buildxyceplugin" and t.installed for t in self.plan.tools)
-            if xyce_ok and bxp_ok:
-                for model in XYCE_MODELS:
-                    self.steps.append(ExecStep(f"Compile Xyce plugin: {model['name']}"))
-
-        if Simulator.GNUCAP in cfg.simulators:
-            gnucap_ok = any(t.name == "gnucap" and t.installed for t in self.plan.tools)
-            mg_ok = any(t.name == "gnucap-mg-vams" and t.installed for t in self.plan.tools)
-            if gnucap_ok and mg_ok:
+        if cfg.compile_verilog_a:
+            openvaf_tool = next(
+                (t for t in self.plan.tools if t.name in ("openvaf", "openvaf-r")),
+                None,
+            )
+            if openvaf_tool and openvaf_tool.installed:
                 for model in OSDI_MODELS:
-                    self.steps.append(ExecStep(f"Compile gnucap plugin: {model['name']}"))
+                    osdi_path = os.path.join(
+                        pdk_root, pdk, "libs.tech", "ngspice", "osdi", f"{model['name']}.osdi"
+                    )
+                    if not os.path.exists(osdi_path):
+                        self.steps.append(ExecStep(f"Compile OSDI: {model['name']}.osdi"))
+
+            from .checker import Simulator
+            if Simulator.XYCE in cfg.simulators:
+                xyce_ok = any(t.name == "Xyce" and t.installed for t in self.plan.tools)
+                bxp_ok = any(t.name == "buildxyceplugin" and t.installed for t in self.plan.tools)
+                if xyce_ok and bxp_ok:
+                    for model in XYCE_MODELS:
+                        self.steps.append(ExecStep(f"Compile Xyce plugin: {model['name']}"))
+
+            if Simulator.GNUCAP in cfg.simulators:
+                gnucap_ok = any(t.name == "gnucap" and t.installed for t in self.plan.tools)
+                mg_ok = any(t.name == "gnucap-mg-vams" and t.installed for t in self.plan.tools)
+                if gnucap_ok and mg_ok:
+                    for model in OSDI_MODELS:
+                        self.steps.append(ExecStep(f"Compile gnucap plugin: {model['name']}"))
 
         from .checker import SchematicEditor
         if SchematicEditor.QUCS_S in cfg.schematic_editors:
