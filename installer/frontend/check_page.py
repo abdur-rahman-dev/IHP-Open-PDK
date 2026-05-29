@@ -1,5 +1,6 @@
 import os
 import subprocess
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget,
@@ -145,6 +146,7 @@ class CheckPage(QWidget):
         self.install_worker: InstallWorker | None = None
         self.executor: InstallExecutor | None = None
         self._tc_phase = "selection"
+        self._recommended_versions = self._load_recommended_versions()
         self._build_ui()
 
     def _build_ui(self):
@@ -198,11 +200,11 @@ class CheckPage(QWidget):
         tools_lay = QVBoxLayout()
         self.tools_table = QTableWidget()
         self.tools_table.verticalHeader().setVisible(False)
-        self.tools_table.setColumnCount(4)
+        self.tools_table.setColumnCount(5)
         self.tools_table.setHorizontalHeaderLabels(
-            ["Tool", "Status", "Version", "Custom Path"]
+            ["Tool", "Status", "Installed Version", "Recommended", "Custom Path"]
         )
-        for col in range(4):
+        for col in range(5):
             self.tools_table.horizontalHeader().setSectionResizeMode(
                 col, QHeaderView.ResizeMode.Stretch
             )
@@ -264,6 +266,23 @@ class CheckPage(QWidget):
         self.install_log.clear()
         self.install_result_label.hide()
         self.hint_label.hide()
+
+    def _load_recommended_versions(self) -> dict:
+        versions = {}
+        vpath = Path(__file__).resolve().parent.parent.parent / "versions.txt"
+        if not vpath.exists():
+            return versions
+        name_map = {"Python": "python3"}
+        with open(vpath, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split(None, 1)
+                if len(parts) == 2:
+                    key = name_map.get(parts[0], parts[0])
+                    versions[key] = parts[1]
+        return versions
 
     def _sync_tc_from_eda(self):
         eda_tools = set()
@@ -543,6 +562,10 @@ class CheckPage(QWidget):
 
             self.tools_table.setItem(i, 2, QTableWidgetItem(t.version or "N/A"))
 
+            canonical = _canonical_tool_name(t.name)
+            rec = self._recommended_versions.get(canonical, "N/A")
+            self.tools_table.setItem(i, 3, QTableWidgetItem(rec))
+
             path_widget = QWidget()
             path_lay = QHBoxLayout()
             path_lay.setContentsMargins(2, 2, 2, 2)
@@ -560,13 +583,13 @@ class CheckPage(QWidget):
                         self, f"Select directory containing {tools[r].name}"
                     )
                     if d:
-                        self.tools_table.setItem(r, 3, QTableWidgetItem(d))
+                        self.tools_table.setItem(r, 4, QTableWidgetItem(d))
 
                 return cb
 
             def make_recheck_cb(r):
                 def cb():
-                    path_item = self.tools_table.item(r, 3)
+                    path_item = self.tools_table.item(r, 4)
                     custom_dir = path_item.text().strip() if path_item else ""
                     if not custom_dir or custom_dir == "---":
                         return
@@ -637,7 +660,7 @@ class CheckPage(QWidget):
                 recheck_btn.hide()
 
             path_widget.setLayout(path_lay)
-            self.tools_table.setCellWidget(i, 3, path_widget)
+            self.tools_table.setCellWidget(i, 4, path_widget)
 
     def _populate_env(self, env_checks):
         if not env_checks:
