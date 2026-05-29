@@ -330,7 +330,7 @@ def build_install_plan(config: InstallConfig) -> InstallPlan:
     plan = InstallPlan(config=config)
     plan.pdk_root = config.get_target_pdk_root()
 
-    if config.check_tools and config.tools_to_check:
+    if config.tools_to_check:
         plan.tools = _check_selected_tools(config)
     elif config.install_mode.value == "new":
         plan.tools = check_tools(config)
