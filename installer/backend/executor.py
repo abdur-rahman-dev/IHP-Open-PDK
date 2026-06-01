@@ -55,6 +55,8 @@ class InstallExecutor(QThread):
             if self._cancelled:
                 break
             self.step_started.emit(i, step.label)
+            self.log_line.emit("")
+            self.log_line.emit(f"Step {i + 1}: {step.label}")
             step.status = ExecStepStatus.RUNNING
             try:
                 ok = self._exec_step(i, step)
