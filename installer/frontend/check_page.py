@@ -222,6 +222,7 @@ class CheckPage(QWidget):
         refresh_row = QHBoxLayout()
         refresh_row.addStretch()
         self.refresh_all_btn = QPushButton()
+        self.refresh_all_btn.setObjectName("icon_btn")
         self.refresh_all_btn.setIcon(
             self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
         )
@@ -686,13 +687,16 @@ class CheckPage(QWidget):
                 path_lay = QHBoxLayout()
                 path_lay.setContentsMargins(2, 2, 2, 2)
                 path_edit = QLineEdit()
+                path_edit.setFixedHeight(32)
                 path_edit.setPlaceholderText("Select klayout package dir...")
                 if t.install_path:
                     display = os.path.dirname(t.install_path) if t.install_path.endswith("__init__.py") else t.install_path
                     path_edit.setText(display)
                 path_edit.setToolTip(path_edit.text())
-                browse_btn = QPushButton("Browse")
-                browse_btn.setFixedWidth(70)
+                browse_btn = QPushButton()
+                browse_btn.setObjectName("icon_btn")
+                browse_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon))
+                browse_btn.setFixedSize(32, 32)
                 row = i
 
                 def make_klayout_py_browse_cb(r, le):
@@ -751,9 +755,12 @@ class CheckPage(QWidget):
                 path_lay = QHBoxLayout()
                 path_lay.setContentsMargins(2, 2, 2, 2)
                 path_edit = QLineEdit()
+                path_edit.setFixedHeight(32)
                 path_edit.setPlaceholderText("Select executable...")
-                browse_btn = QPushButton("Browse")
-                browse_btn.setFixedWidth(70)
+                browse_btn = QPushButton()
+                browse_btn.setObjectName("icon_btn")
+                browse_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon))
+                browse_btn.setFixedSize(32, 32)
                 row = i
 
                 def make_browse_cb(r, le):

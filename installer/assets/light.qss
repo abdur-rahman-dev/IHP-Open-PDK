@@ -118,6 +118,18 @@ QPushButton#browse_btn:hover {
     background-color: @bg_alt@;
 }
 
+QPushButton#icon_btn {
+    background-color: @surface@;
+    color: @text@;
+    border: 1px solid @border@;
+    padding: 2px;
+    min-height: 0px;
+}
+
+QPushButton#icon_btn:hover {
+    background-color: @bg_alt@;
+}
+
 QPushButton#install_btn {
     background-color: @btn_install_bg@;
     color: @btn_install_text@;
