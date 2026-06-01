@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QApplication,
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QCloseEvent
+from PySide6.QtGui import QFont, QCloseEvent, QPixmap
 
 from installer.backend.models import InstallConfig
 from installer.frontend.choice_page import ChoicePage
@@ -68,9 +68,11 @@ class MainWindow(QMainWindow):
         root.setSpacing(8)
 
         header_row = QHBoxLayout()
-        header_spacer = QLabel("")
-        header_spacer.setFixedWidth(108)
-        header_row.addWidget(header_spacer)
+        logo_label = QLabel()
+        logo_pm = QPixmap(str(Path(__file__).resolve().parent.parent / "assets" / "ihp_logo_without_claim_sRGB.png"))
+        logo_label.setPixmap(logo_pm.scaled(48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        logo_label.setFixedSize(48, 48)
+        header_row.addWidget(logo_label)
 
         self.header_label = QLabel("Configuration")
         self.header_label.setFont(QFont("Sans", 16, QFont.Bold))

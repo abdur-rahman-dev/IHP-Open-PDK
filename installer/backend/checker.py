@@ -19,6 +19,7 @@ from .models import (
 VERSION_FLAGS = {
     "ngspice": ["-v"],
     "klayout": ["-v"],
+    "klayout-python": [],
     "xschem": ["-v"],
     "qucs-s": ["-v"],
     "magic": ["--version"],
@@ -95,6 +96,38 @@ def get_version(program: str) -> Optional[str]:
     return None
 
 
+def get_which_path(program: str) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ["which", program],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=True,
+            timeout=5,
+            start_new_session=True,
+        )
+        path = result.stdout.strip()
+        return path if path else None
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
+def check_klayout_python() -> tuple[bool, Optional[str], Optional[str]]:
+    try:
+        import klayout
+        pkg_path = getattr(klayout, "__file__", None)
+        ver = None
+        try:
+            import importlib.metadata
+            ver = importlib.metadata.version("klayout")
+        except Exception:
+            ver = getattr(klayout, "__version__", None)
+        return True, ver, pkg_path
+    except ImportError:
+        return False, None, None
+
+
 def parse_version(version_str: str):
     parts = re.findall(r"\d+", version_str)
     return tuple(int(p) for p in parts) if parts else (0,)
@@ -127,6 +160,7 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
             name=openvaf_name, installed=True, version=ver,
             status=ToolStatusEnum.OK, required=True, category="compiler",
             message="Required for Verilog-A model compilation",
+            install_path=get_which_path(openvaf_name),
         ))
     else:
         results.append(ToolInfo(
@@ -137,11 +171,12 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
 
     import sys
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    py_path = get_which_path("python3") or sys.executable
     if version_gte(py_ver, MIN_PYTHON_VERSION):
         results.append(ToolInfo(
             name="python3", installed=True, version=py_ver,
             min_version=MIN_PYTHON_VERSION, status=ToolStatusEnum.OK,
-            required=False, category="runtime",
+            required=False, category="runtime", install_path=py_path,
         ))
     else:
         results.append(ToolInfo(
@@ -149,6 +184,7 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
             min_version=MIN_PYTHON_VERSION, status=ToolStatusEnum.WARNING,
             required=False, category="runtime",
             message=f"Version {py_ver} < minimum {MIN_PYTHON_VERSION}",
+            install_path=py_path,
         ))
 
     sim_tools = []
@@ -174,6 +210,7 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
                 name=tool_name, installed=True, version=ver,
                 min_version=min_ver, status=status, required=required,
                 category="simulator", message=msg,
+                install_path=get_which_path(tool_name),
             ))
         else:
             results.append(ToolInfo(
@@ -196,6 +233,7 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
         elif ed == LayoutEditor.MAGIC:
             editor_tools.append(("magic", None))
 
+    klayout_binary_ver = None
     for tool_name, min_ver in editor_tools:
         if is_program_installed(tool_name):
             ver = get_version(tool_name)
@@ -208,7 +246,10 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
                 name=tool_name, installed=True, version=ver,
                 min_version=min_ver, status=status, required=False,
                 category="editor", message=msg,
+                install_path=get_which_path(tool_name),
             ))
+            if tool_name == "klayout":
+                klayout_binary_ver = ver
         else:
             results.append(ToolInfo(
                 name=tool_name, installed=False,
@@ -217,10 +258,33 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
                 message="Not found",
             ))
 
+    has_klayout = LayoutEditor.KLAYOUT in config.layout_editors
+    if has_klayout:
+        py_installed, py_ver, py_path = check_klayout_python()
+        if py_installed:
+            msg = ""
+            status = ToolStatusEnum.OK
+            if klayout_binary_ver and py_ver:
+                if parse_version(py_ver) != parse_version(klayout_binary_ver):
+                    status = ToolStatusEnum.WARNING
+                    msg = f"Version mismatch: binary {klayout_binary_ver} vs package {py_ver}"
+            results.append(ToolInfo(
+                name="klayout-python", installed=True, version=py_ver,
+                status=status, required=False, category="editor",
+                message=msg, install_path=py_path,
+            ))
+        else:
+            results.append(ToolInfo(
+                name="klayout-python", installed=False,
+                status=ToolStatusEnum.WARNING, required=False, category="editor",
+                message="Python package not found in current env",
+            ))
+
     if is_program_installed("pip"):
         results.append(ToolInfo(
             name="pip", installed=True, version=get_version("pip"),
             status=ToolStatusEnum.OK, required=False, category="runtime",
+            install_path=get_which_path("pip"),
         ))
     else:
         results.append(ToolInfo(
@@ -319,9 +383,14 @@ def _check_selected_tools(config: InstallConfig) -> list[ToolInfo]:
     all_tools = check_tools(config)
     selected = set(config.tools_to_check)
     filtered = []
+    has_klayout = False
     for t in all_tools:
         base = t.name.split("/")[0]
         if base in selected or t.name in selected:
+            filtered.append(t)
+            if t.name == "klayout":
+                has_klayout = True
+        elif t.name == "klayout-python" and has_klayout:
             filtered.append(t)
     return filtered
 

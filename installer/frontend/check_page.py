@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QLineEdit,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
@@ -21,7 +23,8 @@ from PySide6.QtWidgets import (
     QGridLayout,
 )
 from PySide6.QtCore import Qt, Signal, QThread
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QIcon
+from PySide6.QtWidgets import QStyle
 
 from installer.backend.models import (
     InstallPlan,
@@ -39,6 +42,7 @@ from installer.backend.checker import (
     build_install_plan,
     is_program_installed,
     get_version,
+    VERSION_FLAGS,
 )
 from installer.backend.executor import InstallExecutor
 
@@ -202,16 +206,31 @@ class CheckPage(QWidget):
         self.tools_table.verticalHeader().setVisible(False)
         self.tools_table.setColumnCount(5)
         self.tools_table.setHorizontalHeaderLabels(
-            ["Tool", "Status", "Installed Version", "Recommended", "Custom Path"]
+            ["Tool", "Status", "Installed Version", "PDK Tested", "Path"]
         )
-        for col in range(5):
-            self.tools_table.horizontalHeader().setSectionResizeMode(
-                col, QHeaderView.ResizeMode.Stretch
-            )
+        header = self.tools_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.tools_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.tools_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tools_table.hide()
         tools_lay.addWidget(self.tools_table)
+
+        refresh_row = QHBoxLayout()
+        refresh_row.addStretch()
+        self.refresh_all_btn = QPushButton()
+        self.refresh_all_btn.setIcon(
+            self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload)
+        )
+        self.refresh_all_btn.setToolTip("Re-check all custom paths")
+        self.refresh_all_btn.setFixedSize(32, 32)
+        self.refresh_all_btn.clicked.connect(self._on_refresh_all)
+        refresh_row.addWidget(self.refresh_all_btn)
+        tools_lay.addLayout(refresh_row)
+
         self.tools_group.setLayout(tools_lay)
         self.tools_group.hide()
         root.addWidget(self.tools_group)
@@ -547,10 +566,106 @@ class CheckPage(QWidget):
             return self.theme_manager.get_color("status_error")
         return self.theme_manager.get_color("text_secondary")
 
+    def _check_custom_path_version(self, file_path: str, tool_name: str) -> str | None:
+        canonical = _canonical_tool_name(tool_name)
+        if canonical not in VERSION_FLAGS:
+            return None
+        flags_list = VERSION_FLAGS.get(canonical, ["--version"])
+        for flag in flags_list:
+            try:
+                result = subprocess.run(
+                    [file_path] + flag.split(),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=False,
+                    timeout=10,
+                    start_new_session=True,
+                )
+                output = (result.stdout + result.stderr).strip()
+                if not output:
+                    continue
+                match = re.search(r"(v?\d+\.\d+[\.\d]*[\w\-]*)", output)
+                if match:
+                    return match.group(1)
+            except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+                pass
+        return None
+
+    def _refresh_overall_status(self):
+        tools = self.plan.tools if self.plan else []
+        has_missing = any(not t.installed for t in tools)
+        has_error = any(t.status == ToolStatusEnum.ERROR for t in tools)
+        if has_error:
+            self.result_label.setText("ERRORS found - see details below")
+            self.result_label.setObjectName("result_error")
+        elif has_missing:
+            self.result_label.setText("Some tools not found - provide custom paths or install them")
+            self.result_label.setObjectName("result_warn")
+        else:
+            self.result_label.setText("All checked tools found")
+            self.result_label.setObjectName("result_ok")
+        self.result_label.setStyle(self.result_label.style())
+        self._check_compiler_requirement(tools)
+
+    def _check_klayout_python_from_path(self, selected_dir: str) -> tuple:
+        init_path = os.path.join(selected_dir, "__init__.py")
+        if not os.path.isfile(init_path):
+            parent = os.path.dirname(selected_dir.rstrip("/"))
+            init_path = os.path.join(parent, "__init__.py")
+            if not os.path.isfile(init_path):
+                return None, False
+
+        pkg_dir = os.path.dirname(init_path)
+        site_dir = os.path.dirname(pkg_dir)
+        ver = None
+
+        try:
+            import glob
+            meta_files = glob.glob(
+                os.path.join(site_dir, "klayout*.dist-info", "METADATA")
+            )
+            if meta_files:
+                with open(meta_files[0], "r") as f:
+                    for line in f:
+                        if line.lower().startswith("version:"):
+                            ver = line.split(":", 1)[1].strip()
+                            break
+        except Exception:
+            pass
+
+        if not ver:
+            try:
+                with open(init_path, "r") as f:
+                    content = f.read()
+                m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
+                if m:
+                    ver = m.group(1)
+            except Exception:
+                pass
+
+        return ver, True
+
+    def _check_klayout_python_mismatch(self, py_ver):
+        from installer.backend.checker import parse_version
+        for r in range(self.tools_table.rowCount()):
+            item = self.tools_table.item(r, 0)
+            if not item:
+                continue
+            tool_obj = item.data(Qt.UserRole)
+            if tool_obj and tool_obj.name == "klayout":
+                bin_ver = self.tools_table.item(r, 2).text()
+                if bin_ver and bin_ver != "N/A" and py_ver:
+                    if parse_version(py_ver) != parse_version(bin_ver):
+                        return True, f"Version mismatch: binary {bin_ver} vs package {py_ver}"
+                break
+        return False, ""
+
     def _populate_tools(self, tools):
         self.tools_table.setRowCount(len(tools))
         self.tools_group.show()
         self.tools_table.show()
+        self.tools_table.verticalHeader().setDefaultSectionSize(44)
         for i, t in enumerate(tools):
             name_item = QTableWidgetItem(_tool_display_name(t.name))
             name_item.setData(Qt.UserRole, t)
@@ -566,101 +681,215 @@ class CheckPage(QWidget):
             rec = self._recommended_versions.get(canonical, "N/A")
             self.tools_table.setItem(i, 3, QTableWidgetItem(rec))
 
-            path_widget = QWidget()
-            path_lay = QHBoxLayout()
-            path_lay.setContentsMargins(2, 2, 2, 2)
-            path_label = QLabel("---")
-            browse_btn = QPushButton("Browse...")
-            browse_btn.setObjectName("browse_btn")
-            browse_btn.setFixedWidth(80)
-            recheck_btn = QPushButton("Re-check")
-            recheck_btn.setFixedWidth(70)
-            row = i
+            if t.name == "klayout-python":
+                path_widget = QWidget()
+                path_lay = QHBoxLayout()
+                path_lay.setContentsMargins(2, 2, 2, 2)
+                path_edit = QLineEdit()
+                path_edit.setPlaceholderText("Select klayout package dir...")
+                if t.install_path:
+                    display = os.path.dirname(t.install_path) if t.install_path.endswith("__init__.py") else t.install_path
+                    path_edit.setText(display)
+                path_edit.setToolTip(path_edit.text())
+                browse_btn = QPushButton("Browse")
+                browse_btn.setFixedWidth(70)
+                row = i
 
-            def make_browse_cb(r):
-                def cb():
-                    d = QFileDialog.getExistingDirectory(
-                        self, f"Select directory containing {tools[r].name}"
-                    )
-                    if d:
-                        self.tools_table.setItem(r, 4, QTableWidgetItem(d))
-
-                return cb
-
-            def make_recheck_cb(r):
-                def cb():
-                    path_item = self.tools_table.item(r, 4)
-                    custom_dir = path_item.text().strip() if path_item else ""
-                    if not custom_dir or custom_dir == "---":
-                        return
-                    tool_info = self.tools_table.item(r, 0)
-                    tool_obj = tool_info.data(Qt.UserRole) if tool_info else None
-                    raw_tool_name = tool_obj.name if tool_obj else ""
-                    if _canonical_tool_name(raw_tool_name) == "openvaf":
-                        candidates = ["openvaf-r", "openvaf"]
-                    else:
-                        candidates = [raw_tool_name.split("/")[0]] if raw_tool_name else []
-
-                    found_name = ""
-                    for candidate in candidates:
-                        bin_path = os.path.join(custom_dir, candidate)
-                        if os.path.isfile(bin_path) and os.access(bin_path, os.X_OK):
-                            found_name = candidate
-                            break
-
-                    if found_name:
-                        ver = get_version(found_name) or "found"
-                        self.tools_table.setItem(r, 1, QTableWidgetItem("OK"))
-                        self.tools_table.item(r, 1).setForeground(
-                            self.theme_manager.get_color("status_ok")
+                def make_klayout_py_browse_cb(r, le):
+                    def cb():
+                        d = QFileDialog.getExistingDirectory(
+                            self, "Select klayout Python package directory"
                         )
-                        self.tools_table.setItem(r, 2, QTableWidgetItem(ver))
-                    else:
-                        try:
-                            env = os.environ.copy()
-                            env["PATH"] = custom_dir + ":" + env.get("PATH", "")
-                            found = ""
-                            for candidate in candidates:
-                                result = subprocess.run(
-                                    ["which", candidate],
-                                    env=env,
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.DEVNULL,
-                                    text=True,
-                                    timeout=5,
+                        if not d:
+                            return
+                        le.setText(d)
+                        le.setToolTip(d)
+
+                        ver, valid = self._check_klayout_python_from_path(d)
+                        if valid:
+                            mismatch, mismatch_msg = self._check_klayout_python_mismatch(ver)
+                            if mismatch:
+                                self.tools_table.item(r, 1).setText("WARN")
+                                self.tools_table.item(r, 1).setForeground(
+                                    self.theme_manager.get_color("status_warn")
                                 )
-                                if result.returncode == 0:
-                                    found = result.stdout.strip()
-                                    break
-                            if found:
-                                self.tools_table.setItem(r, 1, QTableWidgetItem("OK"))
+                            else:
+                                self.tools_table.item(r, 1).setText("OK")
                                 self.tools_table.item(r, 1).setForeground(
                                     self.theme_manager.get_color("status_ok")
                                 )
-                            else:
-                                self.tools_table.setItem(r, 1, QTableWidgetItem("MISSING"))
-                                self.tools_table.item(r, 1).setForeground(
-                                    self.theme_manager.get_color("status_error")
-                                )
-                        except Exception:
-                            pass
+                            self.tools_table.item(r, 2).setText(ver or "found")
+                            tool_item = self.tools_table.item(r, 0)
+                            tool_obj = tool_item.data(Qt.UserRole) if tool_item else None
+                            if tool_obj:
+                                tool_obj.installed = True
+                                tool_obj.version = ver
+                                tool_obj.status = ToolStatusEnum.WARNING if mismatch else ToolStatusEnum.OK
+                                tool_obj.message = mismatch_msg
+                                tool_obj.install_path = os.path.join(d, "__init__.py")
+                        else:
+                            self.tools_table.item(r, 1).setText("MISSING")
+                            self.tools_table.item(r, 1).setForeground(
+                                self.theme_manager.get_color("status_error")
+                            )
+                        self._refresh_overall_status()
 
-                return cb
+                    return cb
 
-            browse_btn.clicked.connect(make_browse_cb(row))
-            recheck_btn.clicked.connect(make_recheck_cb(row))
-
-            if not t.installed:
+                browse_btn.clicked.connect(make_klayout_py_browse_cb(row, path_edit))
+                path_lay.addWidget(path_edit)
                 path_lay.addWidget(browse_btn)
-                path_lay.addWidget(recheck_btn)
+                path_widget.setLayout(path_lay)
+                self.tools_table.setCellWidget(i, 4, path_widget)
+            elif t.installed:
+                display_path = t.install_path or ""
+                path_item = QTableWidgetItem(display_path)
+                path_item.setToolTip(display_path)
+                self.tools_table.setItem(i, 4, path_item)
             else:
-                path_label.setText("(system)")
-                path_lay.addWidget(path_label)
-                browse_btn.hide()
-                recheck_btn.hide()
+                path_widget = QWidget()
+                path_lay = QHBoxLayout()
+                path_lay.setContentsMargins(2, 2, 2, 2)
+                path_edit = QLineEdit()
+                path_edit.setPlaceholderText("Select executable...")
+                browse_btn = QPushButton("Browse")
+                browse_btn.setFixedWidth(70)
+                row = i
 
-            path_widget.setLayout(path_lay)
-            self.tools_table.setCellWidget(i, 4, path_widget)
+                def make_browse_cb(r, le):
+                    def cb():
+                        tool_item = self.tools_table.item(r, 0)
+                        tool_obj = tool_item.data(Qt.UserRole) if tool_item else None
+                        tool_name = tool_obj.name if tool_obj else ""
+                        file_path, _ = QFileDialog.getOpenFileName(
+                            self, f"Select {tool_name} executable"
+                        )
+                        if not file_path:
+                            return
+                        le.setText(file_path)
+                        le.setToolTip(file_path)
+
+                        ver = self._check_custom_path_version(file_path, tool_name)
+                        if ver:
+                            self.tools_table.item(r, 1).setText("OK")
+                            self.tools_table.item(r, 1).setForeground(
+                                self.theme_manager.get_color("status_ok")
+                            )
+                            self.tools_table.item(r, 2).setText(ver)
+                            if tool_obj:
+                                tool_obj.installed = True
+                                tool_obj.version = ver
+                                tool_obj.status = ToolStatusEnum.OK
+                        else:
+                            try:
+                                is_exec = os.path.isfile(file_path) and os.access(file_path, os.X_OK)
+                            except OSError:
+                                is_exec = False
+                            if is_exec:
+                                self.tools_table.item(r, 1).setText("OK")
+                                self.tools_table.item(r, 1).setForeground(
+                                    self.theme_manager.get_color("status_ok")
+                                )
+                                if tool_obj:
+                                    tool_obj.installed = True
+                                    tool_obj.status = ToolStatusEnum.OK
+                            else:
+                                return
+
+                        self._refresh_overall_status()
+
+                    return cb
+
+                browse_btn.clicked.connect(make_browse_cb(row, path_edit))
+                path_lay.addWidget(path_edit)
+                path_lay.addWidget(browse_btn)
+                path_widget.setLayout(path_lay)
+                self.tools_table.setCellWidget(i, 4, path_widget)
+
+    def _on_refresh_all(self):
+        for r in range(self.tools_table.rowCount()):
+            cell = self.tools_table.cellWidget(r, 4)
+            if not cell:
+                continue
+            le = None
+            for child in cell.findChildren(QLineEdit):
+                le = child
+                break
+            if not le:
+                continue
+            custom_path = le.text().strip()
+            if not custom_path:
+                continue
+            le.setToolTip(custom_path)
+
+            tool_item = self.tools_table.item(r, 0)
+            tool_obj = tool_item.data(Qt.UserRole) if tool_item else None
+            tool_name = tool_obj.name if tool_obj else ""
+
+            if tool_name == "klayout-python":
+                ver, valid = self._check_klayout_python_from_path(custom_path)
+                if valid:
+                    mismatch, mismatch_msg = self._check_klayout_python_mismatch(ver)
+                    if mismatch:
+                        self.tools_table.item(r, 1).setText("WARN")
+                        self.tools_table.item(r, 1).setForeground(
+                            self.theme_manager.get_color("status_warn")
+                        )
+                    else:
+                        self.tools_table.item(r, 1).setText("OK")
+                        self.tools_table.item(r, 1).setForeground(
+                            self.theme_manager.get_color("status_ok")
+                        )
+                    self.tools_table.item(r, 2).setText(ver or "found")
+                    if tool_obj:
+                        tool_obj.installed = True
+                        tool_obj.version = ver
+                        tool_obj.status = ToolStatusEnum.WARNING if mismatch else ToolStatusEnum.OK
+                        tool_obj.message = mismatch_msg
+                        tool_obj.install_path = os.path.join(custom_path, "__init__.py")
+                else:
+                    self.tools_table.item(r, 1).setText("MISSING")
+                    self.tools_table.item(r, 1).setForeground(
+                        self.theme_manager.get_color("status_error")
+                    )
+                    if tool_obj:
+                        tool_obj.installed = False
+                        tool_obj.status = ToolStatusEnum.ERROR
+            else:
+                ver = self._check_custom_path_version(custom_path, tool_name)
+                if ver:
+                    self.tools_table.item(r, 1).setText("OK")
+                    self.tools_table.item(r, 1).setForeground(
+                        self.theme_manager.get_color("status_ok")
+                    )
+                    self.tools_table.item(r, 2).setText(ver)
+                    if tool_obj:
+                        tool_obj.installed = True
+                        tool_obj.version = ver
+                        tool_obj.status = ToolStatusEnum.OK
+                else:
+                    try:
+                        is_exec = os.path.isfile(custom_path) and os.access(custom_path, os.X_OK)
+                    except OSError:
+                        is_exec = False
+                    if is_exec:
+                        self.tools_table.item(r, 1).setText("OK")
+                        self.tools_table.item(r, 1).setForeground(
+                            self.theme_manager.get_color("status_ok")
+                        )
+                        if tool_obj:
+                            tool_obj.installed = True
+                            tool_obj.status = ToolStatusEnum.OK
+                    else:
+                        self.tools_table.item(r, 1).setText("MISSING")
+                        self.tools_table.item(r, 1).setForeground(
+                            self.theme_manager.get_color("status_error")
+                        )
+                        if tool_obj:
+                            tool_obj.installed = False
+                            tool_obj.status = ToolStatusEnum.ERROR
+
+        self._refresh_overall_status()
 
     def _populate_env(self, env_checks):
         if not env_checks:

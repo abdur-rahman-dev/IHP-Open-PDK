@@ -47,6 +47,7 @@ class ToolInfo:
     required: bool = False
     category: str = ""
     message: str = ""
+    install_path: Optional[str] = None
 
 
 @dataclass
