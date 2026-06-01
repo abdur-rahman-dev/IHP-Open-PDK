@@ -240,14 +240,14 @@ class CheckPage(QWidget):
         env_lay = QVBoxLayout()
         self.env_table = QTableWidget()
         self.env_table.verticalHeader().setVisible(False)
-        self.env_table.setColumnCount(4)
+        self.env_table.setColumnCount(3)
         self.env_table.setHorizontalHeaderLabels(
-            ["Variable", "Status", "Current Value", "Action"]
+            ["Variable", "Current Value", "Action"]
         )
-        for col in [0, 2, 3]:
-            self.env_table.horizontalHeader().setSectionResizeMode(
-                col, QHeaderView.ResizeMode.Stretch
-            )
+        env_header = self.env_table.horizontalHeader()
+        env_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        env_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        env_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.env_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.env_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.env_table.hide()
@@ -904,16 +904,18 @@ class CheckPage(QWidget):
         self.env_table.setRowCount(len(env_checks))
         self.env_group.show()
         self.env_table.show()
-        ok_color = self.theme_manager.get_color("status_ok")
-        warn_color = self.theme_manager.get_color("status_warn")
 
         for i, e in enumerate(env_checks):
             self.env_table.setItem(i, 0, QTableWidgetItem(e.variable))
-            status = "OK" if e.is_set else "MISSING"
-            item = QTableWidgetItem(status)
-            item.setForeground(ok_color if e.is_set else warn_color)
-            self.env_table.setItem(i, 1, item)
-            self.env_table.setItem(i, 2, QTableWidgetItem(e.current_value or "---"))
-            self.env_table.setItem(i, 3, QTableWidgetItem(e.action))
-
-        self.env_table.resizeColumnsToContents()
+            if e.is_set:
+                val_item = QTableWidgetItem(e.current_value or "---")
+            else:
+                val_item = QTableWidgetItem("---")
+            val_item.setToolTip(e.current_value or "")
+            self.env_table.setItem(i, 1, val_item)
+            if e.is_set:
+                self.env_table.setItem(i, 2, QTableWidgetItem(e.action))
+            else:
+                self.env_table.setItem(i, 2, QTableWidgetItem(
+                    f"{e.action} \u2192 {e.expected_value or ''}"
+                ))
