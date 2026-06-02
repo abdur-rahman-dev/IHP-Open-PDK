@@ -134,18 +134,11 @@ class CheckPage(QWidget):
     nav_state_changed = Signal(dict)
 
     ALL_TC_TOOLS = [
-        "python3", "pip", "openvaf/openvaf-r",
-        "buildxyceplugin", "gnucap-mg-vams", "ngspice",
+        "python3", "pip", "ngspice",
         "Xyce", "gnucap", "xschem",
         "qucs-s", "klayout", "magic",
         "netgen", "openEMS",
     ]
-
-    TOOL_DEPS = {
-        "ngspice": ["openvaf/openvaf-r"],
-        "Xyce": ["buildxyceplugin", "openvaf/openvaf-r"],
-        "gnucap": ["gnucap-mg-vams", "openvaf/openvaf-r"],
-    }
 
     def __init__(self, config: InstallConfig, theme_manager, parent=None):
         super().__init__(parent)
@@ -312,16 +305,8 @@ class CheckPage(QWidget):
 
     def _sync_tc_from_eda(self):
         eda_tools = set()
-        has_simulator = False
         for sim in self.config.simulators:
-            has_simulator = True
             eda_tools.add(sim.value)
-            if sim == Simulator.XYCE:
-                eda_tools.add("buildxyceplugin")
-            elif sim == Simulator.GNUCAP:
-                eda_tools.add("gnucap-mg-vams")
-        if has_simulator:
-            eda_tools.add("openvaf/openvaf-r")
         for ed in self.config.schematic_editors:
             eda_tools.add(ed.value)
         for ed in self.config.layout_editors:
@@ -337,11 +322,6 @@ class CheckPage(QWidget):
     def _on_tc_check_toggled(self):
         if self._tc_phase != "selection":
             return
-        for tool, cb in self.tc_checks.items():
-            if cb.isChecked() and tool in self.TOOL_DEPS:
-                for dep in self.TOOL_DEPS[tool]:
-                    if dep in self.tc_checks and not self.tc_checks[dep].isChecked():
-                        self.tc_checks[dep].setChecked(True)
         self.nav_state_changed.emit({
             "next_enabled": self._any_tc_selected(),
             "next_text": "Check",
