@@ -2,8 +2,10 @@ import os
 from pathlib import Path
 
 import pytest
+from PySide6.QtWidgets import QApplication
 
 from installer.backend.models import InstallConfig, PDKChoice
+from installer.frontend.theme import ThemeManager
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -74,3 +76,13 @@ def install_config(fake_pdk_root: Path, mock_env) -> InstallConfig:
     cfg.pdk = PDKChoice.SG13G2
     cfg.pdk_root = str(fake_pdk_root)
     return cfg
+
+
+@pytest.fixture
+def app(qtbot):
+    return QApplication.instance()
+
+
+@pytest.fixture
+def theme_manager(app) -> ThemeManager:
+    return ThemeManager(app, initial="light")
