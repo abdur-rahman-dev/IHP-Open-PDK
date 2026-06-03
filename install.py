@@ -26,7 +26,11 @@ def main():
 
     if args.test is not None:
         pytest_args = args.test.split() if args.test else []
-        cmd = [sys.executable, "-m", "pytest", "installer/test/"] + pytest_args + remaining
+        cmd = [sys.executable, "-m", "pytest"] + pytest_args
+        if remaining:
+            cmd += remaining
+        else:
+            cmd.append("installer/test/")
         raise SystemExit(subprocess.call(cmd))
 
     if args.cli:
