@@ -9,6 +9,8 @@ sys.path.insert(0, PDK_ROOT)
 
 def main():
     import argparse
+    import subprocess
+
     parser = argparse.ArgumentParser(
         description="IHP-Open-PDK Installer",
     )
@@ -16,7 +18,16 @@ def main():
         "--cli", action="store_true",
         help="Run in CLI mode (no GUI)",
     )
+    parser.add_argument(
+        "--test", nargs="?", const="", default=None,
+        help="Run pytest on installer/test/ (optional: pass pytest args)",
+    )
     args, remaining = parser.parse_known_args()
+
+    if args.test is not None:
+        pytest_args = args.test.split() if args.test else []
+        cmd = [sys.executable, "-m", "pytest", "installer/test/"] + pytest_args + remaining
+        raise SystemExit(subprocess.call(cmd))
 
     if args.cli:
         from installer.backend.checker import build_install_plan
