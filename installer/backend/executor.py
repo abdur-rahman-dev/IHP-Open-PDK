@@ -133,11 +133,10 @@ class InstallExecutor(QThread):
             src_pdk_dir = os.path.join(src_root, pdk)
             if not dest_pdk_dir:
                 return True
-            if os.path.exists(dest_pdk_dir):
-                self.log_line.emit("  Destination PDK already exists, skipping copy")
-                return True
             try:
                 os.makedirs(os.path.dirname(dest_pdk_dir), exist_ok=True)
+                if os.path.exists(dest_pdk_dir):
+                    self.log_line.emit("  Destination PDK already exists, overriding contents")
                 shutil.copytree(src_pdk_dir, dest_pdk_dir, symlinks=True, dirs_exist_ok=True)
                 self.log_line.emit(f"  Copied {src_pdk_dir} -> {dest_pdk_dir}")
                 return True

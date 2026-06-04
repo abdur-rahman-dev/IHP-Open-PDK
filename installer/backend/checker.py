@@ -450,6 +450,35 @@ def check_environment(config: InstallConfig) -> list[EnvCheckResult]:
             action="Will create symlink",
         ))
 
+    if config.install_mode.value == "new" and config.install_dir:
+        source_kind = "GitHub source" if config.pdk_source_type == PDKSourceType.GITHUB else "local source"
+        source_root = config.get_source_pdk_root()
+        target_root = config.get_target_pdk_root()
+        target_pdk_dir = config.get_target_pdk_dir()
+        will_sync = config.pdk_source_type == PDKSourceType.GITHUB or target_root != source_root
+
+        if will_sync:
+            if not os.path.exists(target_pdk_dir):
+                action = f"Will populate destination from {source_kind}"
+                current_value = target_pdk_dir
+            elif os.path.isdir(target_pdk_dir) and not os.listdir(target_pdk_dir):
+                action = f"Will populate empty destination from {source_kind}"
+                current_value = target_pdk_dir
+            else:
+                action = f"Destination will be overridden with new contents from {source_kind}"
+                current_value = target_pdk_dir
+        else:
+            action = "Using current location"
+            current_value = target_pdk_dir
+
+        results.append(EnvCheckResult(
+            variable="Install Destination",
+            is_set=not will_sync,
+            current_value=current_value,
+            expected_value=target_pdk_dir,
+            action=action,
+        ))
+
     return results
 
 

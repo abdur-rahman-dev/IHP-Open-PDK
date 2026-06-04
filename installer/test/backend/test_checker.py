@@ -19,7 +19,7 @@ from installer.backend.checker import (
     validate_local_source,
     version_gte,
 )
-from installer.backend.models import GitHubSourceMode, InstallConfig, LayoutEditor, PDKChoice, Simulator, ToolInfo, ToolStatusEnum
+from installer.backend.models import GitHubSourceMode, InstallConfig, InstallMode, LayoutEditor, PDKChoice, PDKSourceType, Simulator, ToolInfo, ToolStatusEnum
 
 
 class _RunResult:
@@ -310,3 +310,46 @@ def test_check_selected_tools_preserves_klayout_python(monkeypatch, install_conf
     assert "klayout" in names
     assert "klayout-python" in names
     assert "python3" not in names
+
+
+def test_check_environment_install_destination_override_for_nonempty_dir(monkeypatch, fake_pdk_root, fake_home):
+    cfg = InstallConfig()
+    cfg.pdk_root = str(fake_pdk_root)
+    cfg.install_mode = InstallMode.NEW
+    cfg.install_dir = str(fake_pdk_root / "target-root")
+    dest = fake_pdk_root / "target-root" / "ihp-sg13g2"
+    dest.mkdir(parents=True)
+    (dest / "existing.txt").write_text("present\n")
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    results = check_environment(cfg)
+    row = next(item for item in results if item.variable == "Install Destination")
+
+    assert row.current_value == str(dest)
+    assert "overridden with new contents from local source" in row.action
+
+
+def test_check_environment_install_destination_uses_github_wording(monkeypatch, fake_pdk_root, fake_home):
+    cfg = InstallConfig()
+    cfg.pdk_root = str(fake_pdk_root)
+    cfg.install_mode = InstallMode.NEW
+    cfg.install_dir = str(fake_pdk_root / "target-root")
+    cfg.pdk_source_type = PDKSourceType.GITHUB
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    results = check_environment(cfg)
+    row = next(item for item in results if item.variable == "Install Destination")
+
+    assert "GitHub source" in row.action
+
+
+def test_check_environment_change_mode_omits_destination_row(monkeypatch, fake_pdk_root, fake_home):
+    cfg = InstallConfig()
+    cfg.pdk_root = str(fake_pdk_root)
+    cfg.install_mode = InstallMode.CHANGE
+    cfg.install_dir = str(fake_pdk_root)
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    results = check_environment(cfg)
+
+    assert all(item.variable != "Install Destination" for item in results)

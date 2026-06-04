@@ -41,6 +41,20 @@ def test_build_steps_no_copy_when_target_matches_source(fake_pdk_root, fake_home
     assert "Update PDK_ROOT" not in labels
 
 
+def test_copy_step_overrides_existing_destination(fake_pdk_root, fake_home):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.install_dir = str(fake_pdk_root / "custom-root")
+    executor = InstallExecutor(plan)
+    dest = fake_pdk_root / "custom-root" / "ihp-sg13g2"
+    dest.mkdir(parents=True)
+    (dest / "stale.txt").write_text("old\n")
+
+    ok = executor._exec_step(0, ExecStep(f"Copy PDK to {dest}"))
+
+    assert ok is True
+    assert (dest / "libs.tech").exists()
+
+
 def test_build_steps_respects_compile_verilog_a_flag(fake_pdk_root, fake_home):
     plan = _make_plan(fake_pdk_root, fake_home)
     plan.config.compile_verilog_a = False
