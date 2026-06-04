@@ -12,10 +12,12 @@ from installer.backend.models import (
     InstallConfig, PDKChoice, Simulator, SchematicEditor,
     LayoutEditor, InstallMode, PDKSourceType, GitHubSourceMode, detect_installer_root,
 )
+from installer.backend.pdk_registry import PDK_DEFINITIONS, get_pdk_definition
+from installer.backend.tool_registry import get_tool_definition
 
 PDK_OPTIONS = [
-    ("ihp-sg13g2", "SG13G2", True),
-    ("ihp-sg13cmos5l", "SG13CMOS5L", False),
+    (pdk.id, pdk.label, pdk.id == PDKChoice.SG13G2.value)
+    for pdk in PDK_DEFINITIONS
 ]
 
 
@@ -156,36 +158,39 @@ class ChoicePage(QWidget):
         eda_grid = QGridLayout()
         eda_grid.setSpacing(8)
 
-        all_items = []
         self.sim_checks = {}
-        for sim in Simulator:
-            all_items.append(("sim", sim))
         self.sch_checks = {}
-        for ed in SchematicEditor:
-            all_items.append(("sch", ed))
         self.lay_checks = {}
+        self._eda_grid = eda_grid
+        self._eda_all_items = []
+
+        for sim in Simulator:
+            tool = get_tool_definition(sim.value)
+            cb = QCheckBox(tool.display_name)
+            cb.setChecked(sim == Simulator.NGSPICE)
+            cb.setProperty("sim_value", sim)
+            self.sim_checks[sim] = cb
+            self._eda_all_items.append((tool.id, "sim", sim, cb))
+
+        for ed in SchematicEditor:
+            tool = get_tool_definition(ed.value)
+            cb = QCheckBox(tool.display_name)
+            cb.setChecked(ed == SchematicEditor.XSCHEM)
+            cb.setProperty("sch_value", ed)
+            self.sch_checks[ed] = cb
+            self._eda_all_items.append((tool.id, "sch", ed, cb))
+
         for ed in LayoutEditor:
             if ed == LayoutEditor.MAGIC:
                 continue
-            all_items.append(("lay", ed))
+            tool = get_tool_definition(ed.value)
+            cb = QCheckBox(tool.display_name)
+            cb.setChecked(ed == LayoutEditor.KLAYOUT)
+            cb.setProperty("lay_value", ed)
+            self.lay_checks[ed] = cb
+            self._eda_all_items.append((tool.id, "lay", ed, cb))
 
-        cols = 3
-        for i, (group, item) in enumerate(all_items):
-            r, c = divmod(i, cols)
-            cb = QCheckBox(item.value)
-            if group == "sim":
-                cb.setChecked(item == Simulator.NGSPICE)
-                cb.setProperty("sim_value", item)
-                self.sim_checks[item] = cb
-            elif group == "sch":
-                cb.setChecked(item == SchematicEditor.XSCHEM)
-                cb.setProperty("sch_value", item)
-                self.sch_checks[item] = cb
-            else:
-                cb.setChecked(item == LayoutEditor.KLAYOUT)
-                cb.setProperty("lay_value", item)
-                self.lay_checks[item] = cb
-            eda_grid.addWidget(cb, r, c)
+        self._refresh_eda_visibility()
 
         eda_group.setLayout(eda_grid)
         grid.addWidget(eda_group, row, 0, 1, 2)
@@ -227,6 +232,7 @@ class ChoicePage(QWidget):
 
     def _on_pdk_changed(self, btn):
         self._update_github_branch_choices()
+        self._refresh_eda_visibility()
         self._update_dir_for_pdk()
         self.config_changed.emit()
 
@@ -258,19 +264,35 @@ class ChoicePage(QWidget):
         self._update_source_visibility()
 
     def _available_github_branches(self) -> list[str]:
-        if self._get_selected_pdk() == PDKChoice.SG13CMOS5L.value:
-            return ["main"]
-        return ["dev", "main"]
+        pdk = get_pdk_definition(self._get_selected_pdk())
+        return list(pdk.allowed_branches)
 
     def _update_github_branch_choices(self):
-        desired = self.github_branch_combo.currentText() or self.config.get_default_github_branch()
+        pdk_def = get_pdk_definition(self._get_selected_pdk())
+        desired = self.github_branch_combo.currentText() or pdk_def.default_branch
         branches = self._available_github_branches()
-        fallback = self.config.get_default_github_branch()
+        fallback = pdk_def.default_branch
         self.github_branch_combo.blockSignals(True)
         self.github_branch_combo.clear()
         self.github_branch_combo.addItems(branches)
         self.github_branch_combo.setCurrentText(desired if desired in branches else fallback)
         self.github_branch_combo.blockSignals(False)
+
+    def _refresh_eda_visibility(self):
+        supported = set(get_pdk_definition(self._get_selected_pdk()).supported_tools)
+        visible = []
+        for tool_id, _group, _item, cb in self._eda_all_items:
+            is_supported = tool_id in supported
+            cb.setVisible(is_supported)
+            if not is_supported:
+                cb.setChecked(False)
+            else:
+                visible.append(cb)
+
+        cols = 3
+        for index, cb in enumerate(visible):
+            row, col = divmod(index, cols)
+            self._eda_grid.addWidget(cb, row, col)
 
     def _update_source_visibility(self):
         is_local = self.source_local.isChecked()

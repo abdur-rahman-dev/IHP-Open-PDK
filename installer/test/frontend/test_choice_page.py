@@ -103,6 +103,16 @@ def test_magic_is_not_visible_layout_choice(qtbot, install_config):
     assert LayoutEditor.MAGIC not in page.lay_checks
 
 
+def test_eda_choices_are_driven_by_supported_tools(qtbot, install_config):
+    page = _make_page(qtbot, install_config)
+
+    assert page.sim_checks[Simulator.NGSPICE].isVisible() is True
+    assert page.sim_checks[Simulator.XYCE].isVisible() is True
+    assert page.sim_checks[Simulator.GNUCAP].isVisible() is True
+    assert page.sch_checks[SchematicEditor.XSCHEM].isVisible() is True
+    assert page.lay_checks[LayoutEditor.KLAYOUT].isVisible() is True
+
+
 def test_get_config_serializes_current_ui_state(qtbot, install_config, tmp_path):
     page = _make_page(qtbot, install_config)
     page.set_base_dir(str(tmp_path))
