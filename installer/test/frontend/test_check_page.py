@@ -184,3 +184,76 @@ def test_check_klayout_python_from_path_reads_metadata(qtbot, install_config, th
 
     assert valid is True
     assert version == "0.30.8"
+
+
+def test_dialog_start_dir_prefers_existing_directory(qtbot, install_config, theme_manager, tmp_path):
+    page = _make_page(qtbot, install_config, theme_manager)
+
+    assert page._dialog_start_dir(str(tmp_path)) == str(tmp_path)
+
+
+def test_dialog_start_dir_uses_parent_for_existing_file(qtbot, install_config, theme_manager, tmp_path):
+    page = _make_page(qtbot, install_config, theme_manager)
+    exe = tmp_path / "bin" / "ngspice"
+    exe.parent.mkdir(parents=True)
+    exe.write_text("#!/bin/sh\n")
+
+    assert page._dialog_start_dir(str(exe), expect_file=True) == str(exe.parent)
+
+
+def test_missing_tool_browse_uses_current_field_directory(qtbot, install_config, theme_manager, tmp_path, monkeypatch):
+    page = _make_page(qtbot, install_config, theme_manager)
+    tool = ToolInfo(name="ngspice", installed=False, status=ToolStatusEnum.WARNING)
+    page._populate_tools([tool])
+
+    widget = page.tools_table.cellWidget(0, 4)
+    line_edit = widget.findChild(QLineEdit)
+    selected = tmp_path / "bin" / "ngspice"
+    selected.parent.mkdir(parents=True)
+    selected.write_text("#!/bin/sh\n")
+    line_edit.setText(str(selected))
+
+    seen = {}
+
+    def fake_open_file_name(parent, title, directory):
+        seen["directory"] = directory
+        return str(selected), ""
+
+    monkeypatch.setattr("installer.frontend.check_page.QFileDialog.getOpenFileName", fake_open_file_name)
+    monkeypatch.setattr(page, "_check_custom_path_version", lambda path, name: "43")
+    page.plan = type("Plan", (), {"tools": [tool]})()
+
+    button = widget.findChildren(type(page.refresh_all_btn))[0]
+    qtbot.mouseClick(button, Qt.LeftButton)
+
+    assert seen["directory"] == str(selected.parent)
+
+
+def test_klayout_python_browse_uses_current_field_directory(qtbot, install_config, theme_manager, tmp_path, monkeypatch):
+    page = _make_page(qtbot, install_config, theme_manager)
+    tools = [
+        ToolInfo(name="klayout", installed=True, version="0.30.5", status=ToolStatusEnum.OK),
+        ToolInfo(name="klayout-python", installed=False, status=ToolStatusEnum.WARNING),
+    ]
+    page._populate_tools(tools)
+
+    widget = page.tools_table.cellWidget(1, 4)
+    line_edit = widget.findChild(QLineEdit)
+    pkg_dir = tmp_path / "site-packages" / "klayout"
+    pkg_dir.mkdir(parents=True)
+    line_edit.setText(str(pkg_dir))
+
+    seen = {}
+
+    def fake_get_existing_directory(parent, title, directory):
+        seen["directory"] = directory
+        return str(pkg_dir)
+
+    monkeypatch.setattr("installer.frontend.check_page.QFileDialog.getExistingDirectory", fake_get_existing_directory)
+    monkeypatch.setattr(page, "_check_klayout_python_from_path", lambda path: ("0.30.5", True))
+    page.plan = type("Plan", (), {"tools": tools})()
+
+    button = widget.findChildren(type(page.refresh_all_btn))[0]
+    qtbot.mouseClick(button, Qt.LeftButton)
+
+    assert seen["directory"] == str(pkg_dir)

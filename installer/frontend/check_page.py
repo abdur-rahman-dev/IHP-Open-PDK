@@ -658,6 +658,19 @@ class CheckPage(QWidget):
                 break
         return False, ""
 
+    def _dialog_start_dir(self, current_text: str, expect_file: bool = False) -> str:
+        path = (current_text or "").strip()
+        if not path:
+            return ""
+        if expect_file and os.path.isfile(path):
+            return os.path.dirname(path)
+        if os.path.isdir(path):
+            return path
+        parent = os.path.dirname(path)
+        if parent and os.path.isdir(parent):
+            return parent
+        return ""
+
     def _populate_tools(self, tools):
         self.tools_table.setRowCount(len(tools))
         self.tools_group.show()
@@ -697,8 +710,9 @@ class CheckPage(QWidget):
 
                 def make_klayout_py_browse_cb(r, le):
                     def cb():
+                        start_dir = self._dialog_start_dir(le.text())
                         d = QFileDialog.getExistingDirectory(
-                            self, "Select klayout Python package directory"
+                            self, "Select klayout Python package directory", start_dir
                         )
                         if not d:
                             return
@@ -764,8 +778,9 @@ class CheckPage(QWidget):
                         tool_item = self.tools_table.item(r, 0)
                         tool_obj = tool_item.data(Qt.UserRole) if tool_item else None
                         tool_name = tool_obj.name if tool_obj else ""
+                        start_dir = self._dialog_start_dir(le.text(), expect_file=True)
                         file_path, _ = QFileDialog.getOpenFileName(
-                            self, f"Select {tool_name} executable"
+                            self, f"Select {tool_name} executable", start_dir
                         )
                         if not file_path:
                             return
