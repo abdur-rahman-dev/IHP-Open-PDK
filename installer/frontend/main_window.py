@@ -18,6 +18,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QCloseEvent, QPixmap
 
 from installer.backend.models import InstallConfig
+from installer.backend.checker import validate_github_source, validate_local_source
 from installer.frontend.choice_page import ChoicePage
 from installer.frontend.check_page import CheckPage
 
@@ -28,6 +29,7 @@ class MainWindow(QMainWindow):
         self.config = InstallConfig()
         self.theme_manager = theme_manager
         self.current_step = 0
+        self._source_valid = True
 
         script_dir = Path(__file__).resolve().parent
         for candidate in [script_dir, script_dir.parent]:
@@ -127,7 +129,9 @@ class MainWindow(QMainWindow):
 
         self.check_page.nav_state_changed.connect(self._on_nav_state_changed)
         self.choice_page.skip_tool_check_changed.connect(self._on_skip_tool_check_toggled)
+        self.choice_page.config_changed.connect(self._on_config_changed)
         self._update_ui_for_step()
+        self._refresh_source_validity()
 
     def _step_name(self, idx: int) -> str:
         names = [
@@ -154,7 +158,7 @@ class MainWindow(QMainWindow):
             else:
                 self.next_btn.setText("Next >")
                 self.next_btn.setObjectName("")
-            self.next_btn.setEnabled(True)
+            self.next_btn.setEnabled(self._source_valid)
             self.next_btn.setStyle(self.next_btn.style())
         elif self.current_step == 1:
             self.back_btn.show()
@@ -184,6 +188,9 @@ class MainWindow(QMainWindow):
     def _on_next_action(self):
         if self.current_step == 0:
             config = self.choice_page.get_config()
+            if not self._validate_source(config, show_dialog=True):
+                self._refresh_source_validity()
+                return
             missing = []
             if not config.simulators:
                 missing.append("simulator")
@@ -238,6 +245,38 @@ class MainWindow(QMainWindow):
                 self.next_btn.setText("Next >")
                 self.next_btn.setObjectName("")
             self.next_btn.setStyle(self.next_btn.style())
+
+    def _on_config_changed(self):
+        if self.current_step == 0:
+            self._refresh_source_validity()
+
+    def _validate_source(self, config: InstallConfig, show_dialog: bool = False) -> bool:
+        if config.pdk_source_type.value == "local":
+            ok, message = validate_local_source(config)
+            self.choice_page.set_source_status(ok, message)
+            if not ok and show_dialog:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Local PDK Source",
+                    f"The selected local source does not look like a valid {config.get_selected_pdk_dirname()} PDK.\n\n{message}",
+                )
+            return ok
+
+        ok, message = validate_github_source(config)
+        self.choice_page.set_source_status(ok, message if not ok else "")
+        if not ok and show_dialog:
+            QMessageBox.warning(
+                self,
+                "GitHub Source Unavailable",
+                message,
+            )
+        return ok
+
+    def _refresh_source_validity(self):
+        config = self.choice_page.get_config()
+        self._source_valid = self._validate_source(config, show_dialog=False)
+        if self.current_step == 0:
+            self.next_btn.setEnabled(self._source_valid)
 
     def _on_nav_state_changed(self, state: dict):
         if self.current_step not in (1, 2):

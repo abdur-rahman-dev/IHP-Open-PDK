@@ -44,6 +44,56 @@ def test_step0_next_text_normal_and_skip_toggle(qtbot, theme_manager, mock_env):
     assert window.next_btn.objectName() == "install_btn"
 
 
+def test_invalid_local_source_disables_next(qtbot, theme_manager, mock_env, monkeypatch):
+    monkeypatch.setattr("installer.frontend.main_window.validate_local_source", lambda cfg: (False, "bad local source"))
+    window = _make_window(qtbot, theme_manager)
+
+    window.choice_page.local_source_input.setText("/tmp/invalid")
+    window._refresh_source_validity()
+
+    assert window.next_btn.isEnabled() is False
+
+
+def test_switching_to_github_lifts_local_disable_when_github_valid(qtbot, theme_manager, mock_env, monkeypatch):
+    monkeypatch.setattr("installer.frontend.main_window.validate_local_source", lambda cfg: (False, "bad local source"))
+    monkeypatch.setattr("installer.frontend.main_window.validate_github_source", lambda cfg: (True, ""))
+    window = _make_window(qtbot, theme_manager)
+
+    window.choice_page.local_source_input.setText("/tmp/invalid")
+    window._refresh_source_validity()
+    assert window.next_btn.isEnabled() is False
+
+    window.choice_page.source_github.click()
+    window._refresh_source_validity()
+
+    assert window.next_btn.isEnabled() is True
+
+
+def test_invalid_github_source_disables_next(qtbot, theme_manager, mock_env, monkeypatch):
+    monkeypatch.setattr("installer.frontend.main_window.validate_github_source", lambda cfg: (False, "use local"))
+    window = _make_window(qtbot, theme_manager)
+
+    window.choice_page.source_github.click()
+    window._refresh_source_validity()
+
+    assert window.next_btn.isEnabled() is False
+
+
+def test_switching_back_to_valid_local_reenables_next(qtbot, theme_manager, mock_env, monkeypatch):
+    monkeypatch.setattr("installer.frontend.main_window.validate_github_source", lambda cfg: (False, "use local"))
+    monkeypatch.setattr("installer.frontend.main_window.validate_local_source", lambda cfg: (True, ""))
+    window = _make_window(qtbot, theme_manager)
+
+    window.choice_page.source_github.click()
+    window._refresh_source_validity()
+    assert window.next_btn.isEnabled() is False
+
+    window.choice_page.source_local.click()
+    window._refresh_source_validity()
+
+    assert window.next_btn.isEnabled() is True
+
+
 def test_go_to_step_one_updates_buttons_and_calls_show_tool_selection(qtbot, theme_manager, mock_env, monkeypatch):
     window = _make_window(qtbot, theme_manager)
     called = {"show": False}

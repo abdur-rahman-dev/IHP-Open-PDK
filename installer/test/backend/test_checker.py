@@ -10,13 +10,16 @@ from installer.backend.checker import (
     check_environment,
     check_klayout_python,
     check_tools,
+    get_github_repo_url,
     get_version,
     get_which_path,
     is_program_installed,
     parse_version,
+    validate_github_source,
+    validate_local_source,
     version_gte,
 )
-from installer.backend.models import InstallConfig, LayoutEditor, Simulator, ToolInfo, ToolStatusEnum
+from installer.backend.models import GitHubSourceMode, InstallConfig, LayoutEditor, PDKChoice, Simulator, ToolInfo, ToolStatusEnum
 
 
 class _RunResult:
@@ -199,6 +202,93 @@ def test_check_environment_spiceinit_valid(monkeypatch, fake_pdk_root, fake_home
 
     assert spiceinit_row.is_set is True
     assert spiceinit_row.action == "Valid symlink"
+
+
+def test_validate_local_source_ok(fake_pdk_root):
+    cfg = InstallConfig()
+    cfg.local_source_root = str(fake_pdk_root)
+
+    ok, message = validate_local_source(cfg)
+
+    assert ok is True
+    assert message == ""
+
+
+def test_validate_local_source_reports_missing_paths(tmp_path):
+    cfg = InstallConfig()
+    cfg.local_source_root = str(tmp_path)
+
+    ok, message = validate_local_source(cfg)
+
+    assert ok is False
+    assert "libs.tech" in message
+    assert "libs.ref" in message
+
+
+def test_get_github_repo_url_by_pdk():
+    cfg = InstallConfig()
+    assert get_github_repo_url(cfg).endswith("IHP-Open-PDK.git")
+    cfg.pdk = PDKChoice.SG13CMOS5L
+    assert get_github_repo_url(cfg).endswith("ihp-sg13cmos5l.git")
+
+
+def test_validate_github_source_reports_missing_git(monkeypatch):
+    cfg = InstallConfig()
+    monkeypatch.setattr(checker, "is_program_installed", lambda name: False)
+
+    ok, message = validate_github_source(cfg)
+
+    assert ok is False
+    assert "From Local" in message
+
+
+def test_validate_github_source_accepts_branch(monkeypatch):
+    cfg = InstallConfig()
+    cfg.github_branch = "dev"
+    monkeypatch.setattr(checker, "is_program_installed", lambda name: True)
+
+    def fake_run(*args, **kwargs):
+        return _RunResult(stdout="abc123\trefs/heads/dev\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ok, message = validate_github_source(cfg)
+
+    assert ok is True
+    assert message == ""
+
+
+def test_validate_github_source_commit_mode_empty_uses_fallback_branch(monkeypatch):
+    cfg = InstallConfig()
+    cfg.github_source_mode = GitHubSourceMode.COMMIT
+    monkeypatch.setattr(checker, "is_program_installed", lambda name: True)
+
+    def fake_run(*args, **kwargs):
+        return _RunResult(stdout="abc123\trefs/heads/dev\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ok, message = validate_github_source(cfg)
+
+    assert ok is True
+    assert message == ""
+
+
+def test_validate_github_source_rejects_missing_commit(monkeypatch):
+    cfg = InstallConfig()
+    cfg.github_source_mode = GitHubSourceMode.COMMIT
+    cfg.github_commit = "deadbeef"
+    monkeypatch.setattr(checker, "is_program_installed", lambda name: True)
+
+    def fake_run(*args, **kwargs):
+        return _RunResult(stdout="abc123\trefs/heads/dev\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ok, message = validate_github_source(cfg)
+
+    assert ok is False
+    assert "deadbeef" in message
 
 
 def test_check_selected_tools_preserves_klayout_python(monkeypatch, install_config):

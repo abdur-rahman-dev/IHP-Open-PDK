@@ -14,6 +14,8 @@ from .models import (
     Simulator,
     SchematicEditor,
     LayoutEditor,
+    PDKChoice,
+    PDKSourceType,
 )
 
 VERSION_FLAGS = {
@@ -50,6 +52,11 @@ XYCE_MODELS = [
     {"name": "r3_cmc", "src_dir": "r3_cmc", "va_file": "r3_cmc.va"},
     {"name": "mosvar", "src_dir": "mosvar", "va_file": "mosvar.va"},
 ]
+
+GITHUB_REPOS = {
+    PDKChoice.SG13G2: "https://github.com/IHP-GmbH/IHP-Open-PDK.git",
+    PDKChoice.SG13CMOS5L: "https://github.com/IHP-GmbH/ihp-sg13cmos5l.git",
+}
 
 
 def is_program_installed(program: str) -> bool:
@@ -143,6 +150,73 @@ def md5_file(filepath: str) -> str:
         for chunk in iter(lambda: f.read(8192), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def get_github_repo_url(config: InstallConfig) -> str:
+    return GITHUB_REPOS[config.pdk]
+
+
+def validate_local_source(config: InstallConfig) -> tuple[bool, str]:
+    source_root = (config.local_source_root or "").strip()
+    if not source_root:
+        return False, "Select a local PDK root."
+    pdk_dir = os.path.join(source_root, config.get_selected_pdk_dirname())
+    missing = []
+    if not os.path.isdir(pdk_dir):
+        missing.append(pdk_dir)
+    libs_tech = os.path.join(pdk_dir, "libs.tech")
+    libs_ref = os.path.join(pdk_dir, "libs.ref")
+    if not os.path.isdir(libs_tech):
+        missing.append(libs_tech)
+    if not os.path.isdir(libs_ref):
+        missing.append(libs_ref)
+    if missing:
+        return False, "Missing required paths:\n" + "\n".join(missing)
+    return True, ""
+
+
+def validate_github_source(config: InstallConfig) -> tuple[bool, str]:
+    if not is_program_installed("git"):
+        return False, "Git is not installed. Please use From Local."
+
+    repo = get_github_repo_url(config)
+    ref = config.get_effective_github_ref()
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", repo],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=15,
+            check=False,
+            start_new_session=True,
+        )
+    except subprocess.TimeoutExpired:
+        return False, "Timed out while contacting GitHub. Please use From Local."
+    except OSError as exc:
+        return False, f"Unable to run git: {exc}. Please use From Local."
+
+    if result.returncode != 0:
+        msg = (result.stderr or result.stdout).strip() or "GitHub source is unreachable."
+        return False, f"{msg} Please use From Local."
+
+    lines = [line.split()[0] for line in result.stdout.splitlines() if line.strip()]
+    if config.github_source_mode.value == "branch":
+        branch_ref = f"refs/heads/{ref}"
+        if branch_ref not in result.stdout:
+            return False, f"Branch '{ref}' is not available in the selected GitHub repository."
+        return True, ""
+
+    commit = (config.github_commit or "").strip()
+    if not commit:
+        fallback_ref = f"refs/heads/{ref}"
+        if fallback_ref not in result.stdout:
+            return False, f"Fallback branch '{ref}' is not available in the selected GitHub repository."
+        return True, ""
+
+    if any(sha.startswith(commit) for sha in lines):
+        return True, ""
+    return False, f"Commit '{commit}' was not found in the selected GitHub repository."
 
 
 def check_tools(config: InstallConfig) -> list[ToolInfo]:
