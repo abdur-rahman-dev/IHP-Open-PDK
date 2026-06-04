@@ -101,7 +101,12 @@ class InstallConfig:
 
     def get_source_pdk_root(self) -> str:
         if self.pdk_source_type == PDKSourceType.LOCAL and self.local_source_root:
-            return self.local_source_root
+            import os
+            norm = os.path.normpath(self.local_source_root)
+            parent = os.path.dirname(norm)
+            if parent and parent != norm:
+                return parent
+            return norm
         if self.pdk_root:
             return self.pdk_root
         import os
@@ -115,7 +120,8 @@ class InstallConfig:
 
     def get_local_source_pdk_dir(self) -> str:
         import os
-        return os.path.join(self.get_source_pdk_root(), self.get_selected_pdk_dirname())
+        source = self.local_source_root or self.get_source_pdk_root()
+        return os.path.normpath(source)
 
     def get_default_github_branch(self) -> str:
         if self.pdk == PDKChoice.SG13CMOS5L:

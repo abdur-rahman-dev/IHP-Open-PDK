@@ -37,16 +37,24 @@ def test_get_source_pdk_root_falls_back_to_env(fake_pdk_root, mock_env):
 
 def test_get_source_pdk_root_prefers_local_source_root(fake_pdk_root, mock_env):
     cfg = InstallConfig()
-    cfg.local_source_root = str(fake_pdk_root / "local-root")
+    cfg.local_source_root = str(fake_pdk_root / "ihp-sg13g2")
 
-    assert cfg.get_source_pdk_root() == str(fake_pdk_root / "local-root")
+    assert cfg.get_source_pdk_root() == str(fake_pdk_root)
 
 
 def test_get_local_source_pdk_dir(fake_pdk_root, mock_env):
     cfg = InstallConfig()
-    cfg.local_source_root = str(fake_pdk_root)
+    cfg.local_source_root = str(fake_pdk_root / "ihp-sg13g2")
 
     assert cfg.get_local_source_pdk_dir() == str(fake_pdk_root / "ihp-sg13g2")
+
+
+def test_get_source_pdk_root_uses_parent_of_selected_pdk_dir(tmp_path):
+    cfg = InstallConfig()
+    pdk_dir = tmp_path / "some-root" / "ihp-sg13g2"
+    cfg.local_source_root = str(pdk_dir)
+
+    assert cfg.get_source_pdk_root() == str(tmp_path / "some-root")
 
 
 def test_get_default_github_branch():

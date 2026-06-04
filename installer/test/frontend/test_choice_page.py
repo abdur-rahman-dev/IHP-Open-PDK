@@ -48,7 +48,7 @@ def test_switching_pdk_updates_cmos5l_suffix(qtbot, install_config, tmp_path):
 def test_install_mode_defaults_local_source_to_script_root(qtbot, install_config):
     page = _make_page(qtbot, install_config)
 
-    assert page.local_source_input.text() == page._script_install_root()
+    assert page.local_source_input.text() == f"{page._script_install_root()}/ihp-sg13g2"
 
 
 def test_change_mode_unchecks_compile_va(qtbot, install_config):
@@ -58,7 +58,7 @@ def test_change_mode_unchecks_compile_va(qtbot, install_config):
 
     assert page.compile_va_cb.isChecked() is False
     assert page.source_local.isChecked() is True
-    assert page.local_source_input.text()
+    assert page.local_source_input.text().endswith("/ihp-sg13g2")
 
 
 def test_install_mode_rechecks_compile_va(qtbot, install_config):
@@ -137,6 +137,17 @@ def test_get_config_serializes_current_ui_state(qtbot, install_config, tmp_path)
     assert cfg.simulators == [Simulator.XYCE]
     assert cfg.schematic_editors == [SchematicEditor.QUCS_S]
     assert cfg.layout_editors == [LayoutEditor.KLAYOUT]
+
+
+def test_switching_pdk_updates_default_local_source_dir(qtbot, install_config):
+    page = _make_page(qtbot, install_config)
+
+    for btn in page.pdk_btn_group.buttons():
+        if btn.property("pdk_value") == "ihp-sg13cmos5l":
+            btn.click()
+            break
+
+    assert page.local_source_input.text().endswith("/ihp-sg13cmos5l")
 
 
 def test_get_config_serializes_github_source_fields(qtbot, install_config):

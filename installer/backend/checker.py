@@ -157,10 +157,19 @@ def get_github_repo_url(config: InstallConfig) -> str:
 
 
 def validate_local_source(config: InstallConfig) -> tuple[bool, str]:
-    source_root = (config.local_source_root or "").strip()
-    if not source_root:
-        return False, "Select a local PDK root."
-    pdk_dir = os.path.join(source_root, config.get_selected_pdk_dirname())
+    pdk_dir = (config.local_source_root or "").strip()
+    if not pdk_dir:
+        return False, "Select a local PDK directory."
+    norm = os.path.normpath(pdk_dir)
+    expected = config.get_selected_pdk_dirname()
+    if os.path.basename(norm) != expected:
+        return False, (
+            f"Selected folder '{norm}' is not the expected PDK directory '{expected}'.\n"
+            f"Select the PDK directory itself, not the PDK root."
+        )
+    parent = os.path.dirname(norm)
+    if not parent or parent == norm:
+        return False, "Cannot derive PDK root from the selected folder. Select the PDK directory itself, not the PDK root."
     missing = []
     if not os.path.isdir(pdk_dir):
         missing.append(pdk_dir)

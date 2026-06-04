@@ -45,6 +45,8 @@ class ChoicePage(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(24)
         grid.setVerticalSpacing(10)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
         row = 0
 
         pdk_group = QGroupBox("PDK")
@@ -60,8 +62,7 @@ class ChoicePage(QWidget):
                 rb.setChecked(True)
         self.pdk_btn_group.buttonClicked.connect(self._on_pdk_changed)
         pdk_group.setLayout(pdk_lay)
-        grid.addWidget(pdk_group, row, 0, 1, 2)
-        row += 1
+        grid.addWidget(pdk_group, row, 0)
 
         source_group = QGroupBox("PDK Source")
         source_grid = QGridLayout()
@@ -196,19 +197,6 @@ class ChoicePage(QWidget):
         grid.addWidget(eda_group, row, 0, 1, 2)
         row += 1
 
-        dir_group = QGroupBox("Installation Directory")
-        dir_lay = QHBoxLayout()
-        self.dir_input = QLineEdit()
-        self.dir_input.setPlaceholderText("Leave empty to use current PDK location")
-        dir_lay.addWidget(self.dir_input, 1)
-        self.dir_browse = QPushButton("Browse...")
-        self.dir_browse.setObjectName("browse_btn")
-        self.dir_browse.clicked.connect(self._on_browse)
-        dir_lay.addWidget(self.dir_browse)
-        dir_group.setLayout(dir_lay)
-        grid.addWidget(dir_group, row, 0, 1, 2)
-        row += 1
-
         root.addLayout(grid)
         root.addStretch()
 
@@ -233,6 +221,8 @@ class ChoicePage(QWidget):
     def _on_pdk_changed(self, btn):
         self._update_github_branch_choices()
         self._refresh_eda_visibility()
+        if self.source_local.isChecked():
+            self._set_default_source_root_for_mode(force=True)
         self._update_dir_for_pdk()
         self.config_changed.emit()
 

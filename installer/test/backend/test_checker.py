@@ -207,7 +207,7 @@ def test_check_environment_spiceinit_valid(monkeypatch, fake_pdk_root, fake_home
 
 def test_validate_local_source_ok(fake_pdk_root):
     cfg = InstallConfig()
-    cfg.local_source_root = str(fake_pdk_root)
+    cfg.local_source_root = str(fake_pdk_root / "ihp-sg13g2")
 
     ok, message = validate_local_source(cfg)
 
@@ -217,13 +217,23 @@ def test_validate_local_source_ok(fake_pdk_root):
 
 def test_validate_local_source_reports_missing_paths(tmp_path):
     cfg = InstallConfig()
-    cfg.local_source_root = str(tmp_path)
+    cfg.local_source_root = str(tmp_path / "ihp-sg13g2")
 
     ok, message = validate_local_source(cfg)
 
     assert ok is False
     assert "libs.tech" in message
     assert "libs.ref" in message
+
+
+def test_validate_local_source_rejects_pdk_root_selection(fake_pdk_root):
+    cfg = InstallConfig()
+    cfg.local_source_root = str(fake_pdk_root)
+
+    ok, message = validate_local_source(cfg)
+
+    assert ok is False
+    assert "Select the PDK directory itself" in message
 
 
 def test_get_github_repo_url_by_pdk():
