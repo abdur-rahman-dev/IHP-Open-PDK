@@ -76,22 +76,30 @@ class ChoicePage(QWidget):
         self.source_btn_group.addButton(self.source_local, 0)
         self.source_btn_group.addButton(self.source_github, 1)
         source_top = QHBoxLayout()
-        source_top.addWidget(self.source_local)
-        source_top.addWidget(self.source_github)
+        source_top.setSpacing(24)
+        source_top.addWidget(self.source_local, 1)
+        source_top.addWidget(self.source_github, 1)
         source_top.addStretch()
         source_grid.addLayout(source_top, 0, 0, 1, 2)
 
-        self.local_source_label = QLabel("Local Root")
+        source_sep = QLabel("")
+        source_sep.setFixedHeight(1)
+        source_sep.setObjectName("subseparator")
+        source_grid.addWidget(source_sep, 1, 0, 1, 2)
+
+        self.local_source_label = QLabel("Local PDK")
+        self.local_source_label.setObjectName("subtitle")
         self.local_source_input = QLineEdit()
-        self.local_source_input.setPlaceholderText("Select local PDK root")
+        self.local_source_input.setPlaceholderText("Select local PDK directory")
         self.local_source_browse = QPushButton("Browse...")
         self.local_source_browse.setObjectName("browse_btn")
         self.local_source_browse.clicked.connect(self._on_local_source_browse)
         local_row = QHBoxLayout()
         local_row.addWidget(self.local_source_input, 1)
+        local_row.addSpacing(8)
         local_row.addWidget(self.local_source_browse)
-        source_grid.addWidget(self.local_source_label, 1, 0)
-        source_grid.addLayout(local_row, 1, 1)
+        source_grid.addWidget(self.local_source_label, 2, 0)
+        source_grid.addLayout(local_row, 2, 1)
 
         self.github_mode_group = QButtonGroup(self)
         self.github_branch_radio = QRadioButton("Branch")
@@ -100,49 +108,54 @@ class ChoicePage(QWidget):
         self.github_mode_group.addButton(self.github_branch_radio, 0)
         self.github_mode_group.addButton(self.github_commit_radio, 1)
         gh_mode_row = QHBoxLayout()
-        gh_mode_row.addWidget(self.github_branch_radio)
-        gh_mode_row.addWidget(self.github_commit_radio)
+        gh_mode_row.setSpacing(24)
+        gh_mode_row.addWidget(self.github_branch_radio, 1)
+        gh_mode_row.addWidget(self.github_commit_radio, 1)
         gh_mode_row.addStretch()
         self.github_mode_label = QLabel("GitHub Ref")
-        source_grid.addWidget(self.github_mode_label, 2, 0)
-        source_grid.addLayout(gh_mode_row, 2, 1)
+        self.github_mode_label.setObjectName("subtitle")
+        source_grid.addWidget(self.github_mode_label, 3, 0)
+        source_grid.addLayout(gh_mode_row, 3, 1)
 
         self.github_branch_label = QLabel("Branch")
+        self.github_branch_label.setObjectName("subtitle")
         self.github_branch_combo = QComboBox()
-        source_grid.addWidget(self.github_branch_label, 3, 0)
-        source_grid.addWidget(self.github_branch_combo, 3, 1)
+        source_grid.addWidget(self.github_branch_label, 4, 0)
+        source_grid.addWidget(self.github_branch_combo, 4, 1)
 
         self.github_commit_label = QLabel("Commit Hash")
+        self.github_commit_label.setObjectName("subtitle")
         self.github_commit_input = QLineEdit()
         self.github_commit_input.setPlaceholderText("Leave empty to use default branch head")
-        source_grid.addWidget(self.github_commit_label, 4, 0)
-        source_grid.addWidget(self.github_commit_input, 4, 1)
+        source_grid.addWidget(self.github_commit_label, 5, 0)
+        source_grid.addWidget(self.github_commit_input, 5, 1)
 
         self.source_status = QLabel("")
         self.source_status.setWordWrap(True)
         self.source_status.hide()
-        source_grid.addWidget(self.source_status, 5, 0, 1, 2)
-
-        source_group.setLayout(source_grid)
-        grid.addWidget(source_group, row, 0, 1, 2)
-        row += 1
+        source_grid.addWidget(self.source_status, 6, 0, 1, 2)
 
         mode_group = QGroupBox("Mode")
         mode_lay = QHBoxLayout()
+        mode_lay.setSpacing(24)
         self.mode_btn_group = QButtonGroup(self)
         self.mode_new = QRadioButton("Install")
         self.mode_new.setChecked(True)
         self.mode_change = QRadioButton("Change PDK")
         self.mode_btn_group.addButton(self.mode_new, 0)
         self.mode_btn_group.addButton(self.mode_change, 1)
-        mode_lay.addWidget(self.mode_new)
-        mode_lay.addWidget(self.mode_change)
+        mode_lay.addWidget(self.mode_new, 1)
+        mode_lay.addWidget(self.mode_change, 1)
         mode_group.setLayout(mode_lay)
-        grid.addWidget(mode_group, row, 0, 1, 2)
+        grid.addWidget(mode_group, row, 1)
+        row += 1
+
+        source_group.setLayout(source_grid)
+        grid.addWidget(source_group, row, 0, 1, 2)
         row += 1
 
         ic_group = QGroupBox("Install Config")
-        ic_lay = QVBoxLayout()
+        ic_lay = QHBoxLayout()
         self.compile_va_cb = QCheckBox("Compile Verilog-A")
         self.compile_va_cb.setChecked(True)
         self.mode_btn_group.buttonClicked.connect(self._on_mode_changed)
@@ -151,8 +164,22 @@ class ChoicePage(QWidget):
         self.skip_tool_check_cb.setChecked(False)
         self.skip_tool_check_cb.toggled.connect(self.skip_tool_check_changed.emit)
         ic_lay.addWidget(self.skip_tool_check_cb)
+        ic_lay.addStretch()
         ic_group.setLayout(ic_lay)
         grid.addWidget(ic_group, row, 0, 1, 2)
+        row += 1
+
+        dir_group = QGroupBox("Installation Directory")
+        dir_lay = QHBoxLayout()
+        self.dir_input = QLineEdit()
+        self.dir_input.setPlaceholderText("Leave empty to use current PDK location")
+        dir_lay.addWidget(self.dir_input, 1)
+        self.dir_browse = QPushButton("Browse...")
+        self.dir_browse.setObjectName("browse_btn")
+        self.dir_browse.clicked.connect(self._on_browse)
+        dir_lay.addWidget(self.dir_browse)
+        dir_group.setLayout(dir_lay)
+        grid.addWidget(dir_group, row, 0, 1, 2)
         row += 1
 
         eda_group = QGroupBox("EDA Config")
@@ -243,12 +270,15 @@ class ChoicePage(QWidget):
         return self._script_root
 
     def _default_local_source_root(self) -> str:
+        pdk_dir = self.PDK_DIR_MAP[self._get_selected_pdk()]
         if self.mode_change.isChecked():
-            return os.environ.get("PDK_ROOT") or self._script_install_root()
-        return self._script_install_root()
+            base = os.environ.get("PDK_ROOT") or self._script_install_root()
+        else:
+            base = self._script_install_root()
+        return str(Path(base) / pdk_dir)
 
-    def _set_default_source_root_for_mode(self):
-        if not self.local_source_input.text().strip() or self.source_local.isChecked():
+    def _set_default_source_root_for_mode(self, force: bool = False):
+        if force or not self.local_source_input.text().strip() or self.source_local.isChecked():
             self.local_source_input.setText(self._default_local_source_root())
         self.source_local.setChecked(True)
         self._update_source_visibility()
@@ -300,7 +330,7 @@ class ChoicePage(QWidget):
 
     def _on_local_source_browse(self):
         start = self.local_source_input.text().strip()
-        d = QFileDialog.getExistingDirectory(self, "Select Local PDK Root", start)
+        d = QFileDialog.getExistingDirectory(self, "Select Local PDK Directory", start)
         if d:
             self.local_source_input.setText(d)
 

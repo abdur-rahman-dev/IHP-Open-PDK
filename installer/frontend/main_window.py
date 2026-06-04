@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QMessageBox,
     QApplication,
+    QScrollArea,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QCloseEvent, QPixmap
@@ -60,7 +61,7 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self):
         self.setWindowTitle("IHP-Open-PDK Installer")
-        self.setMinimumSize(720, 620)
+        self.setMinimumSize(720, 710)
         self.resize(800, 700)
 
         central = QWidget()
@@ -96,9 +97,13 @@ class MainWindow(QMainWindow):
         root.addWidget(self.stacked, 1)
 
         self.choice_page = ChoicePage(self.config)
+        self.choice_scroll = QScrollArea()
+        self.choice_scroll.setWidget(self.choice_page)
+        self.choice_scroll.setWidgetResizable(True)
+        self.choice_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self.check_page = CheckPage(self.config, self.theme_manager)
 
-        self.stacked.addWidget(self.choice_page)
+        self.stacked.addWidget(self.choice_scroll)
         self.stacked.addWidget(self.check_page)
 
         nav_lay = QHBoxLayout()

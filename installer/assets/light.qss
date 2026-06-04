@@ -22,6 +22,11 @@ QLabel#separator {
     color: transparent;
 }
 
+QLabel#subseparator {
+    background-color: @group_border@;
+    color: transparent;
+}
+
 QLabel#page_title {
     color: @brand@;
     font-size: 18px;
