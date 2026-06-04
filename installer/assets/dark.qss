@@ -104,7 +104,7 @@ QPushButton:pressed {
 }
 
 QPushButton:disabled {
-    background-color: @border@;
+    background-color: @btn_disabled_bg@;
     color: @text_dim@;
 }
 
@@ -145,7 +145,7 @@ QPushButton#install_btn:hover {
 }
 
 QPushButton#install_btn:disabled {
-    background-color: @border@;
+    background-color: @btn_disabled_bg@;
     color: @text_dim@;
 }
 
@@ -164,7 +164,7 @@ QPushButton#close_btn:hover {
 }
 
 QPushButton#close_btn:disabled {
-    background-color: @border@;
+    background-color: @btn_disabled_bg@;
     color: @text_dim@;
 }
 
@@ -183,7 +183,7 @@ QPushButton#back_btn:hover {
 }
 
 QPushButton#back_btn:disabled {
-    background-color: @border@;
+    background-color: @btn_disabled_bg@;
     color: @text_dim@;
 }
 
