@@ -9,6 +9,7 @@ from installer.backend.checker import (
     _check_selected_tools,
     check_environment,
     check_klayout_python,
+    check_tools_for_names,
     check_tools,
     get_github_repo_url,
     get_version,
@@ -310,6 +311,29 @@ def test_check_selected_tools_preserves_klayout_python(monkeypatch, install_conf
     assert "klayout" in names
     assert "klayout-python" in names
     assert "python3" not in names
+
+
+def test_check_tools_for_names_is_independent_of_eda_config(monkeypatch, install_config):
+    install_config.simulators = []
+    install_config.schematic_editors = []
+    install_config.layout_editors = []
+
+    monkeypatch.setattr(
+        checker,
+        "check_tools",
+        lambda cfg: [
+            ToolInfo(name="openvaf-r", installed=True),
+            ToolInfo(name="python3", installed=True),
+            ToolInfo(name="pip", installed=True),
+            ToolInfo(name="klayout", installed=True),
+            ToolInfo(name="klayout-python", installed=True),
+        ],
+    )
+
+    results = check_tools_for_names(["klayout"], install_config)
+    names = [tool.name for tool in results]
+
+    assert names == ["klayout", "klayout-python"]
 
 
 def test_check_environment_install_destination_override_for_nonempty_dir(monkeypatch, fake_pdk_root, fake_home):

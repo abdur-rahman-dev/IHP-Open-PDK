@@ -74,6 +74,22 @@ def test_get_effective_github_ref_uses_branch_or_commit_fallback():
     assert cfg.get_effective_github_ref() == "main"
 
 
+def test_get_effective_simulators_defaults_to_ngspice_for_compile_va():
+    cfg = InstallConfig()
+    cfg.simulators = []
+    cfg.compile_verilog_a = True
+
+    assert [sim.value for sim in cfg.get_effective_simulators()] == ["ngspice"]
+
+
+def test_get_effective_simulators_can_be_empty_when_compile_va_disabled():
+    cfg = InstallConfig()
+    cfg.simulators = []
+    cfg.compile_verilog_a = False
+
+    assert cfg.get_effective_simulators() == []
+
+
 def test_get_target_pdk_root_strips_pdk_suffix(fake_pdk_root, mock_env):
     cfg = InstallConfig()
     cfg.install_dir = str(fake_pdk_root / "ihp-sg13g2")

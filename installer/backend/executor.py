@@ -190,14 +190,14 @@ class InstallExecutor(QThread):
                         self.steps.append(ExecStep(f"Compile OSDI: {model['name']}.osdi"))
 
             from .checker import Simulator
-            if Simulator.XYCE in cfg.simulators:
+            if Simulator.XYCE in cfg.get_effective_simulators():
                 xyce_ok = any(t.name == "Xyce" and t.installed for t in self.plan.tools)
                 bxp_ok = any(t.name == "buildxyceplugin" and t.installed for t in self.plan.tools)
                 if xyce_ok and bxp_ok:
                     for model in XYCE_MODELS:
                         self.steps.append(ExecStep(f"Compile Xyce plugin: {model['name']}"))
 
-            if Simulator.GNUCAP in cfg.simulators:
+            if Simulator.GNUCAP in cfg.get_effective_simulators():
                 gnucap_ok = any(t.name == "gnucap" and t.installed for t in self.plan.tools)
                 mg_ok = any(t.name == "gnucap-mg-vams" and t.installed for t in self.plan.tools)
                 if gnucap_ok and mg_ok:

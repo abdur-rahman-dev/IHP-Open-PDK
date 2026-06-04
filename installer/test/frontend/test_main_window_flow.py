@@ -147,6 +147,23 @@ def test_normal_next_from_step0_goes_to_tool_check(qtbot, theme_manager, mock_en
     assert called == [1]
 
 
+def test_empty_eda_selection_does_not_block_progress(qtbot, theme_manager, mock_env, monkeypatch):
+    window = _make_window(qtbot, theme_manager)
+    called = []
+
+    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
+    for cb in window.choice_page.sim_checks.values():
+        cb.setChecked(False)
+    for cb in window.choice_page.sch_checks.values():
+        cb.setChecked(False)
+    for cb in window.choice_page.lay_checks.values():
+        cb.setChecked(False)
+
+    window._on_next_action()
+
+    assert called == [1]
+
+
 def test_back_navigation(qtbot, theme_manager, mock_env, monkeypatch):
     window = _make_window(qtbot, theme_manager)
     called = []

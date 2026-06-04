@@ -32,19 +32,15 @@ from installer.backend.models import (
     ToolInfo,
     InstallConfig,
     ExecStepStatus,
-    Simulator,
-    SchematicEditor,
-    LayoutEditor,
 )
 from installer.backend.checker import (
-    check_tools,
+    check_tools_for_names,
     check_environment,
     build_install_plan,
-    is_program_installed,
-    get_version,
     VERSION_FLAGS,
 )
 from installer.backend.executor import InstallExecutor
+from installer.backend.tool_registry import get_tool_check_tool_ids
 
 
 def _canonical_tool_name(name: str) -> str:
@@ -71,27 +67,7 @@ class ToolCheckWorker(QThread):
         self.extra_tools = extra_tools
 
     def run(self):
-        tools = check_tools(self.config)
-
-        checked_names = {_canonical_tool_name(t.name) for t in tools}
-        for raw in self.extra_tools:
-            canonical = _canonical_tool_name(raw)
-            if canonical in checked_names:
-                continue
-            if is_program_installed(raw.split("/")[0]):
-                ver = get_version(raw.split("/")[0])
-                tools.append(ToolInfo(
-                    name=raw, installed=True, version=ver,
-                    status=ToolStatusEnum.OK, required=False,
-                    category="extra", message="",
-                ))
-            else:
-                tools.append(ToolInfo(
-                    name=raw, installed=False,
-                    status=ToolStatusEnum.WARNING, required=False,
-                    category="extra", message="Not found",
-                ))
-            checked_names.add(canonical)
+        tools = check_tools_for_names(self.extra_tools, self.config)
 
         total = len(tools)
         if total == 0:
@@ -133,12 +109,8 @@ class InstallWorker(QThread):
 class CheckPage(QWidget):
     nav_state_changed = Signal(dict)
 
-    ALL_TC_TOOLS = [
-        "python3", "pip", "ngspice",
-        "Xyce", "gnucap", "xschem",
-        "qucs-s", "klayout", "magic",
-        "netgen", "openEMS",
-    ]
+    ALL_TC_TOOLS = get_tool_check_tool_ids()
+    DEFAULT_TC_TOOLS = ["openvaf/openvaf-r", "klayout"]
 
     def __init__(self, config: InstallConfig, theme_manager, parent=None):
         super().__init__(parent)
@@ -303,19 +275,6 @@ class CheckPage(QWidget):
                     versions[key] = parts[1]
         return versions
 
-    def _sync_tc_from_eda(self):
-        eda_tools = set()
-        for sim in self.config.simulators:
-            eda_tools.add(sim.value)
-        for ed in self.config.schematic_editors:
-            eda_tools.add(ed.value)
-        for ed in self.config.layout_editors:
-            eda_tools.add(ed.value)
-        for tool, cb in self.tc_checks.items():
-            base = tool.split("/")[0]
-            if base in eda_tools or tool in eda_tools:
-                cb.setChecked(True)
-
     def _any_tc_selected(self) -> bool:
         return any(cb.isChecked() for cb in self.tc_checks.values())
 
@@ -327,42 +286,13 @@ class CheckPage(QWidget):
             "next_text": "Check",
         })
 
-    def _configured_tools(self) -> list[str]:
-        tools = set()
-        for sim in self.config.simulators:
-            if sim.value == "ngspice":
-                tools.add("ngspice")
-            elif sim.value == "Xyce":
-                tools.add("Xyce")
-                tools.add("buildxyceplugin")
-            elif sim.value == "gnucap":
-                tools.add("gnucap")
-                tools.add("gnucap-mg-vams")
-            tools.add("openvaf/openvaf-r")
-
-        for ed in self.config.schematic_editors:
-            tools.add(ed.value)
-        for ed in self.config.layout_editors:
-            tools.add(ed.value)
-
-        tools.add("python3")
-        tools.add("pip")
-        return list(tools)
-
-    def _extra_tools(self) -> list[str]:
-        configured = {_canonical_tool_name(t) for t in self._configured_tools()}
-        return [
-            t for t in self.tc_checks
-            if self.tc_checks[t].isChecked()
-            and _canonical_tool_name(t) not in configured
-        ]
-
     def show_tool_selection(self):
         self.reset_view()
         self._tc_phase = "selection"
         self.tc_section.show()
         self.tc_scroll.show()
-        self._sync_tc_from_eda()
+        for tool, cb in self.tc_checks.items():
+            cb.setChecked(tool in self.DEFAULT_TC_TOOLS)
         self.status_label.hide()
         self.hint_label.setText("Select tools to check, then click Check.")
         self.hint_label.show()
@@ -386,9 +316,7 @@ class CheckPage(QWidget):
         self.config.tools_to_check = [
             t for t, cb in self.tc_checks.items() if cb.isChecked()
         ]
-
-        extra = self._extra_tools()
-        self.tool_worker = ToolCheckWorker(self.config, extra)
+        self.tool_worker = ToolCheckWorker(self.config, list(self.config.tools_to_check))
         self.tool_worker.status.connect(self.status_label.setText)
         self.tool_worker.progress.connect(self._on_tool_progress)
         self.tool_worker.done.connect(self._on_tool_done)
@@ -429,7 +357,7 @@ class CheckPage(QWidget):
         self._check_compiler_requirement(tools)
 
     def _check_compiler_requirement(self, tools):
-        has_sim = len(self.config.simulators) > 0
+        has_sim = len(self.config.get_effective_simulators()) > 0 and self.config.compile_verilog_a
         has_compiler = any(
             _canonical_tool_name(t.name) == "openvaf" and t.installed
             for t in tools

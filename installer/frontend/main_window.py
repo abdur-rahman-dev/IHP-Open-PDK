@@ -191,23 +191,6 @@ class MainWindow(QMainWindow):
             if not self._validate_source(config, show_dialog=True):
                 self._refresh_source_validity()
                 return
-            missing = []
-            if not config.simulators:
-                missing.append("simulator")
-            if not config.schematic_editors:
-                missing.append("schematic editor")
-            if not config.layout_editors:
-                missing.append("layout editor")
-            if missing:
-                reply = QMessageBox.warning(
-                    self,
-                    "Incomplete Selection",
-                    f"No {'/'.join(missing)} selected. Proceed anyway?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No,
-                )
-                if reply == QMessageBox.No:
-                    return
             if config.install_dir and not os.path.isdir(config.install_dir):
                 try:
                     Path(config.install_dir).mkdir(parents=True, exist_ok=True)

@@ -3,7 +3,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLineEdit
 
-from installer.backend.models import EnvCheckResult, LayoutEditor, Simulator, ToolInfo, ToolStatusEnum
+from installer.backend.models import EnvCheckResult, LayoutEditor, ToolInfo, ToolStatusEnum
 from installer.frontend.check_page import CheckPage, _canonical_tool_name, _tool_display_name
 
 
@@ -17,8 +17,8 @@ def _make_page(qtbot, install_config, theme_manager):
 def test_all_tc_tools_visible_list(qtbot, install_config, theme_manager):
     page = _make_page(qtbot, install_config, theme_manager)
 
-    assert len(page.ALL_TC_TOOLS) == 11
-    assert "openvaf/openvaf-r" not in page.ALL_TC_TOOLS
+    assert len(page.ALL_TC_TOOLS) == 12
+    assert "openvaf/openvaf-r" in page.ALL_TC_TOOLS
     assert "buildxyceplugin" not in page.ALL_TC_TOOLS
     assert "gnucap-mg-vams" not in page.ALL_TC_TOOLS
 
@@ -31,29 +31,14 @@ def test_openvaf_canonical_and_display_mapping():
     assert _tool_display_name("ngspice") == "ngspice"
 
 
-def test_configured_tools_auto_include_hidden_dependencies(qtbot, install_config, theme_manager):
-    install_config.simulators = [Simulator.NGSPICE, Simulator.XYCE, Simulator.GNUCAP]
+def test_show_tool_selection_uses_tool_check_defaults_only(qtbot, install_config, theme_manager):
     page = _make_page(qtbot, install_config, theme_manager)
 
-    tools = set(page._configured_tools())
+    page.show_tool_selection()
 
-    assert "ngspice" in tools
-    assert "Xyce" in tools
-    assert "gnucap" in tools
-    assert "openvaf/openvaf-r" in tools
-    assert "buildxyceplugin" in tools
-    assert "gnucap-mg-vams" in tools
-
-
-def test_sync_tc_from_eda_checks_only_visible_tools(qtbot, install_config, theme_manager):
-    install_config.simulators = [Simulator.XYCE]
-    page = _make_page(qtbot, install_config, theme_manager)
-
-    page._sync_tc_from_eda()
-
-    assert page.tc_checks["Xyce"].isChecked() is True
-    assert page.tc_checks["python3"].isChecked() is False
-    assert "buildxyceplugin" not in page.tc_checks
+    assert page.tc_checks["openvaf/openvaf-r"].isChecked() is True
+    assert page.tc_checks["klayout"].isChecked() is True
+    assert page.tc_checks["ngspice"].isChecked() is False
 
 
 def test_show_tool_selection_emits_nav_state(qtbot, install_config, theme_manager):
@@ -66,6 +51,7 @@ def test_show_tool_selection_emits_nav_state(qtbot, install_config, theme_manage
     assert page.tc_section.isVisible() is True
     assert page.hint_label.text() == "Select tools to check, then click Check."
     assert blocker.args[0]["next_text"] == "Check"
+    assert blocker.args[0]["next_enabled"] is True
 
 
 def test_tc_toggle_enables_next_when_any_selected(qtbot, install_config, theme_manager):
@@ -164,6 +150,7 @@ def test_refresh_overall_status_updates_result_label(qtbot, install_config, them
     page.plan = type("Plan", (), {})()
     page.plan.tools = [ToolInfo(name="python3", installed=True, status=ToolStatusEnum.OK)]
     page.config.simulators = []
+    page.config.compile_verilog_a = False
 
     page._refresh_overall_status()
 

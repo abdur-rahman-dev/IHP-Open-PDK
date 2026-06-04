@@ -127,6 +127,13 @@ class InstallConfig:
             return (self.github_commit or "").strip() or self.get_default_github_branch()
         return (self.github_branch or "").strip() or self.get_default_github_branch()
 
+    def get_effective_simulators(self) -> list[Simulator]:
+        if self.simulators:
+            return list(self.simulators)
+        if self.compile_verilog_a:
+            return [Simulator.NGSPICE]
+        return []
+
     def get_target_pdk_root(self) -> str:
         if self.install_dir:
             return self._normalize_root_from_install_dir(self.install_dir)

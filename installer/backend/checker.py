@@ -262,7 +262,7 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
         ))
 
     sim_tools = []
-    for sim in config.simulators:
+    for sim in config.get_effective_simulators():
         if sim == Simulator.NGSPICE:
             sim_tools.append(("ngspice", False, None))
         elif sim == Simulator.XYCE:
@@ -367,6 +367,52 @@ def check_tools(config: InstallConfig) -> list[ToolInfo]:
         ))
 
     return results
+
+
+def check_tools_for_names(tool_names: list[str], config: InstallConfig) -> list[ToolInfo]:
+    cfg = InstallConfig(
+        pdk=config.pdk,
+        simulators=[],
+        schematic_editors=[],
+        layout_editors=[],
+        install_mode=config.install_mode,
+        install_dir=config.install_dir,
+        pdk_root=config.pdk_root,
+        pdk_source_type=config.pdk_source_type,
+        local_source_root=config.local_source_root,
+        github_source_mode=config.github_source_mode,
+        github_branch=config.github_branch,
+        github_commit=config.github_commit,
+        compile_verilog_a=config.compile_verilog_a,
+        skip_tool_check=config.skip_tool_check,
+    )
+    selected = {_canonical_tool_name_for_check(t) for t in tool_names}
+    for sim in Simulator:
+        if sim.value in selected:
+            cfg.simulators.append(sim)
+    for ed in SchematicEditor:
+        if ed.value in selected:
+            cfg.schematic_editors.append(ed)
+    for ed in LayoutEditor:
+        if ed.value in selected:
+            cfg.layout_editors.append(ed)
+
+    all_tools = check_tools(cfg)
+    filtered = []
+    include_klayout_python = "klayout" in selected
+    for tool in all_tools:
+        canonical = _canonical_tool_name_for_check(tool.name)
+        if canonical in selected:
+            filtered.append(tool)
+        elif tool.name == "klayout-python" and include_klayout_python:
+            filtered.append(tool)
+    return filtered
+
+
+def _canonical_tool_name_for_check(name: str) -> str:
+    if name in ("openvaf", "openvaf-r", "openvaf/openvaf-r"):
+        return "openvaf"
+    return name
 
 
 def check_environment(config: InstallConfig) -> list[EnvCheckResult]:
@@ -515,7 +561,7 @@ def build_install_plan(config: InstallConfig) -> InstallPlan:
     )
     openvaf_available = openvaf_tool and openvaf_tool.installed
 
-    if not openvaf_available and config.install_mode.value == "new":
+    if config.compile_verilog_a and not openvaf_available and config.install_mode.value == "new":
         plan.errors.append("openvaf/openvaf-r not found - required for Verilog-A compilation")
 
     for t in plan.tools:
@@ -543,14 +589,14 @@ def build_install_plan(config: InstallConfig) -> InstallPlan:
             else:
                 plan.actions.append(f"OSDI model {model['name']}.osdi: already exists (skip)")
 
-    if Simulator.XYCE in config.simulators:
+    if Simulator.XYCE in config.get_effective_simulators():
         xyce_tool = next((t for t in plan.tools if t.name == "Xyce"), None)
         bxp_tool = next((t for t in plan.tools if t.name == "buildxyceplugin"), None)
         if xyce_tool and xyce_tool.installed and bxp_tool and bxp_tool.installed:
             for model in XYCE_MODELS:
                 plan.actions.append(f"Compile Xyce plugin: {model['name']}")
 
-    if Simulator.GNUCAP in config.simulators:
+    if Simulator.GNUCAP in config.get_effective_simulators():
         gnucap_tool = next((t for t in plan.tools if t.name == "gnucap"), None)
         mg_tool = next((t for t in plan.tools if t.name == "gnucap-mg-vams"), None)
         if gnucap_tool and gnucap_tool.installed and mg_tool and mg_tool.installed:
