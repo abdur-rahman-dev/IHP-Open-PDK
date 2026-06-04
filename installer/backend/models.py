@@ -29,6 +29,16 @@ class InstallMode(str, Enum):
     CHANGE = "change"
 
 
+class PDKSourceType(str, Enum):
+    LOCAL = "local"
+    GITHUB = "github"
+
+
+class GitHubSourceMode(str, Enum):
+    BRANCH = "branch"
+    COMMIT = "commit"
+
+
 class ToolStatusEnum(str, Enum):
     OK = "OK"
     WARNING = "WARN"
@@ -72,6 +82,11 @@ class InstallConfig:
     install_mode: InstallMode = InstallMode.NEW
     install_dir: Optional[str] = None
     pdk_root: Optional[str] = None
+    pdk_source_type: PDKSourceType = PDKSourceType.LOCAL
+    local_source_root: Optional[str] = None
+    github_source_mode: GitHubSourceMode = GitHubSourceMode.BRANCH
+    github_branch: Optional[str] = None
+    github_commit: Optional[str] = None
     tools_to_check: list[str] = field(default_factory=list)
     compile_verilog_a: bool = True
     skip_tool_check: bool = False
@@ -85,21 +100,32 @@ class InstallConfig:
         return norm
 
     def get_source_pdk_root(self) -> str:
+        if self.pdk_source_type == PDKSourceType.LOCAL and self.local_source_root:
+            return self.local_source_root
         if self.pdk_root:
             return self.pdk_root
         import os
-        from pathlib import Path
         env_val = os.environ.get("PDK_ROOT")
         if env_val:
             return env_val
-        script_dir = Path(__file__).resolve().parent
-        for candidate in [script_dir, script_dir.parent]:
-            if candidate.name in ("installer", "ihp-sg13g2", "ihp-sg13cmos5l"):
-                candidate = candidate.parent
-            for child in candidate.iterdir():
-                if child.is_dir() and (child / "libs.tech").is_dir():
-                    return str(candidate)
-        return str(script_dir.parent)
+        return detect_installer_root()
+
+    def get_selected_pdk_dirname(self) -> str:
+        return self.pdk.value
+
+    def get_local_source_pdk_dir(self) -> str:
+        import os
+        return os.path.join(self.get_source_pdk_root(), self.get_selected_pdk_dirname())
+
+    def get_default_github_branch(self) -> str:
+        if self.pdk == PDKChoice.SG13CMOS5L:
+            return "main"
+        return "dev"
+
+    def get_effective_github_ref(self) -> str:
+        if self.github_source_mode == GitHubSourceMode.COMMIT:
+            return (self.github_commit or "").strip() or self.get_default_github_branch()
+        return (self.github_branch or "").strip() or self.get_default_github_branch()
 
     def get_target_pdk_root(self) -> str:
         if self.install_dir:
@@ -118,6 +144,19 @@ class InstallConfig:
 
     def get_pdk_root(self) -> str:
         return self.get_target_pdk_root()
+
+
+def detect_installer_root() -> str:
+    from pathlib import Path
+
+    script_dir = Path(__file__).resolve().parent
+    for candidate in [script_dir, script_dir.parent]:
+        if candidate.name in ("installer", "ihp-sg13g2", "ihp-sg13cmos5l"):
+            candidate = candidate.parent
+        for child in candidate.iterdir():
+            if child.is_dir() and (child / "libs.tech").is_dir():
+                return str(candidate)
+    return str(script_dir.parent)
 
 
 @dataclass

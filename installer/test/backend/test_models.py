@@ -1,4 +1,12 @@
-from installer.backend.models import InstallConfig, InstallPlan, PDKChoice, ToolInfo, ToolStatusEnum
+from installer.backend.models import (
+    GitHubSourceMode,
+    InstallConfig,
+    InstallPlan,
+    PDKChoice,
+    PDKSourceType,
+    ToolInfo,
+    ToolStatusEnum,
+)
 
 
 def test_install_config_defaults():
@@ -7,6 +15,8 @@ def test_install_config_defaults():
     assert cfg.pdk == PDKChoice.SG13G2
     assert cfg.compile_verilog_a is True
     assert cfg.skip_tool_check is False
+    assert cfg.pdk_source_type == PDKSourceType.LOCAL
+    assert cfg.github_source_mode == GitHubSourceMode.BRANCH
     assert len(cfg.simulators) == 1
     assert len(cfg.schematic_editors) == 1
     assert len(cfg.layout_editors) == 1
@@ -23,6 +33,45 @@ def test_get_source_pdk_root_falls_back_to_env(fake_pdk_root, mock_env):
     cfg = InstallConfig()
 
     assert cfg.get_source_pdk_root() == str(fake_pdk_root)
+
+
+def test_get_source_pdk_root_prefers_local_source_root(fake_pdk_root, mock_env):
+    cfg = InstallConfig()
+    cfg.local_source_root = str(fake_pdk_root / "local-root")
+
+    assert cfg.get_source_pdk_root() == str(fake_pdk_root / "local-root")
+
+
+def test_get_local_source_pdk_dir(fake_pdk_root, mock_env):
+    cfg = InstallConfig()
+    cfg.local_source_root = str(fake_pdk_root)
+
+    assert cfg.get_local_source_pdk_dir() == str(fake_pdk_root / "ihp-sg13g2")
+
+
+def test_get_default_github_branch():
+    cfg = InstallConfig()
+
+    assert cfg.get_default_github_branch() == "dev"
+
+    cfg.pdk = PDKChoice.SG13CMOS5L
+    assert cfg.get_default_github_branch() == "main"
+
+
+def test_get_effective_github_ref_uses_branch_or_commit_fallback():
+    cfg = InstallConfig()
+    cfg.github_branch = "main"
+    assert cfg.get_effective_github_ref() == "main"
+
+    cfg.github_source_mode = GitHubSourceMode.COMMIT
+    cfg.github_commit = "abc123"
+    assert cfg.get_effective_github_ref() == "abc123"
+
+    cfg.github_commit = ""
+    assert cfg.get_effective_github_ref() == "dev"
+
+    cfg.pdk = PDKChoice.SG13CMOS5L
+    assert cfg.get_effective_github_ref() == "main"
 
 
 def test_get_target_pdk_root_strips_pdk_suffix(fake_pdk_root, mock_env):
