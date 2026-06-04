@@ -2,12 +2,13 @@ import os
 import signal
 import shutil
 import subprocess
+import tempfile
 import time
 
 from PySide6.QtCore import QThread, Signal
 
 from .models import InstallPlan, ExecStep, ExecStepStatus
-from .checker import OSDI_MODELS, XYCE_MODELS, is_program_installed
+from .checker import OSDI_MODELS, XYCE_MODELS, get_github_repo_url, is_program_installed
 
 
 class InstallExecutor(QThread):
@@ -22,6 +23,8 @@ class InstallExecutor(QThread):
         self.steps: list[ExecStep] = []
         self._cancelled = False
         self._current_proc: subprocess.Popen | None = None
+        self._temp_source_root: str | None = None
+        self._resolved_source_pdk_dir: str | None = None
 
     def cancel(self):
         self._cancelled = True
@@ -50,27 +53,112 @@ class InstallExecutor(QThread):
             self._current_proc = None
 
     def run(self):
-        self._build_steps()
-        for i, step in enumerate(self.steps):
-            if self._cancelled:
-                break
-            self.step_started.emit(i, step.label)
-            self.log_line.emit("")
-            self.log_line.emit(f"Step {i + 1}: {step.label}")
-            step.status = ExecStepStatus.RUNNING
-            try:
-                ok = self._exec_step(i, step)
-                step.status = ExecStepStatus.DONE if ok else ExecStepStatus.FAILED
-                self.step_finished.emit(i, step.label, ok)
-                if not ok:
-                    step.detail = step.detail or "Failed"
-            except Exception as e:
-                step.status = ExecStepStatus.FAILED
-                step.detail = str(e)
-                self.step_finished.emit(i, step.label, False)
-        self._terminate_current_proc()
+        try:
+            self._build_steps()
+            for i, step in enumerate(self.steps):
+                if self._cancelled:
+                    break
+                self.step_started.emit(i, step.label)
+                self.log_line.emit("")
+                self.log_line.emit(f"Step {i + 1}: {step.label}")
+                step.status = ExecStepStatus.RUNNING
+                try:
+                    ok = self._exec_step(i, step)
+                    step.status = ExecStepStatus.DONE if ok else ExecStepStatus.FAILED
+                    self.step_finished.emit(i, step.label, ok)
+                    if not ok:
+                        step.detail = step.detail or "Failed"
+                except Exception as e:
+                    step.status = ExecStepStatus.FAILED
+                    step.detail = str(e)
+                    self.step_finished.emit(i, step.label, False)
+        finally:
+            self._terminate_current_proc()
+            self._cleanup_temp_source()
         any_fail = any(s.status == ExecStepStatus.FAILED for s in self.steps)
         self.all_done.emit((not any_fail) and (not self._cancelled))
+
+    def _using_github_source(self) -> bool:
+        return self.plan.config.pdk_source_type.value == "github"
+
+    def _github_needs_submodules(self) -> bool:
+        cfg = self.plan.config
+        return cfg.pdk.value == "ihp-sg13g2" and cfg.get_effective_github_ref() == "dev"
+
+    def _default_source_pdk_dir(self) -> str:
+        cfg = self.plan.config
+        if cfg.pdk_source_type.value == "local":
+            return cfg.get_local_source_pdk_dir()
+        return os.path.join(cfg.get_source_pdk_root(), cfg.pdk.value)
+
+    def _resolved_source_pdk_path(self) -> str:
+        return self._resolved_source_pdk_dir or self._default_source_pdk_dir()
+
+    def _resolve_cloned_source_pdk_dir(self, clone_dir: str) -> str | None:
+        pdk = self.plan.config.pdk.value
+        nested = os.path.join(clone_dir, pdk)
+        if os.path.isdir(os.path.join(nested, "libs.tech")):
+            return nested
+        if os.path.isdir(os.path.join(clone_dir, "libs.tech")) and os.path.basename(clone_dir) == pdk:
+            return clone_dir
+        return None
+
+    def _cleanup_temp_source(self):
+        if self._temp_source_root and os.path.exists(self._temp_source_root):
+            try:
+                shutil.rmtree(self._temp_source_root)
+            except OSError as exc:
+                self.log_line.emit(f"  Warning: failed to remove temp source: {exc}")
+        self._temp_source_root = None
+        self._resolved_source_pdk_dir = None
+
+    def _fetch_github_source(self) -> bool:
+        cfg = self.plan.config
+        repo = get_github_repo_url(cfg)
+        ref = cfg.get_effective_github_ref()
+        clone_dir = tempfile.mkdtemp(prefix="ihp-pdk-src-")
+        self._temp_source_root = clone_dir
+
+        if cfg.github_source_mode.value == "branch":
+            recurse = " --recurse-submodules" if self._github_needs_submodules() else ""
+            cmd = f"git clone --branch {ref}{recurse} {repo} {clone_dir}"
+            self.log_line.emit(f"  Running: {cmd}")
+            ok, _ = self._run_cmd(cmd)
+            if not ok:
+                return False
+        else:
+            cmd = f"git clone {repo} {clone_dir}"
+            self.log_line.emit(f"  Running: {cmd}")
+            ok, _ = self._run_cmd(cmd)
+            if not ok:
+                return False
+            commit = (cfg.github_commit or "").strip()
+            if commit:
+                cmd = f"git checkout {commit}"
+                self.log_line.emit(f"  Running: {cmd}")
+                ok, _ = self._run_cmd(cmd, cwd=clone_dir)
+                if not ok:
+                    return False
+                if cfg.pdk.value == "ihp-sg13g2":
+                    cmd = "git submodule update --init --recursive"
+                    self.log_line.emit(f"  Running: {cmd}")
+                    ok, _ = self._run_cmd(cmd, cwd=clone_dir)
+                    if not ok:
+                        return False
+            elif self._github_needs_submodules():
+                cmd = "git submodule update --init --recursive"
+                self.log_line.emit(f"  Running: {cmd}")
+                ok, _ = self._run_cmd(cmd, cwd=clone_dir)
+                if not ok:
+                    return False
+
+        resolved = self._resolve_cloned_source_pdk_dir(clone_dir)
+        if not resolved:
+            self.log_line.emit(f"  Cloned repository does not contain expected PDK structure for {cfg.pdk.value}")
+            return False
+        self._resolved_source_pdk_dir = resolved
+        self.log_line.emit(f"  Prepared GitHub source: {resolved}")
+        return True
 
     def _build_steps(self):
         cfg = self.plan.config
@@ -79,7 +167,9 @@ class InstallExecutor(QThread):
 
         source_root = cfg.get_source_pdk_root()
         target_root = cfg.get_target_pdk_root()
-        if cfg.install_dir and target_root != source_root:
+        if self._using_github_source():
+            self.steps.append(ExecStep("Fetch PDK source from GitHub"))
+        if cfg.install_dir and (target_root != source_root or self._using_github_source()):
             self.steps.append(ExecStep(f"Copy PDK to {cfg.get_target_pdk_dir()}"))
             self.steps.append(ExecStep(f"Update PDK_ROOT"))
 
@@ -127,10 +217,12 @@ class InstallExecutor(QThread):
         pdk = cfg.pdk.value
         home = os.environ.get("HOME", "")
 
+        if label == "Fetch PDK source from GitHub":
+            return self._fetch_github_source()
+
         if label.startswith("Copy PDK to"):
             dest_pdk_dir = cfg.get_target_pdk_dir()
-            src_root = cfg.get_source_pdk_root()
-            src_pdk_dir = os.path.join(src_root, pdk)
+            src_pdk_dir = self._resolved_source_pdk_path()
             if not dest_pdk_dir:
                 return True
             try:

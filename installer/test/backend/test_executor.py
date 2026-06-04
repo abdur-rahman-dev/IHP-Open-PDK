@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 from installer.backend.executor import InstallExecutor
-from installer.backend.models import ExecStep, InstallConfig, InstallPlan, LayoutEditor, Simulator, ToolInfo
+from installer.backend.models import ExecStep, GitHubSourceMode, InstallConfig, InstallPlan, LayoutEditor, PDKChoice, PDKSourceType, Simulator, ToolInfo
 
 
 def _make_plan(fake_pdk_root: Path, fake_home: Path) -> InstallPlan:
@@ -27,6 +27,19 @@ def test_build_steps_includes_copy_and_update_when_target_differs(fake_pdk_root,
 
     assert any(label.startswith("Copy PDK to") for label in labels)
     assert "Update PDK_ROOT" in labels
+
+
+def test_build_steps_adds_fetch_for_github_source(fake_pdk_root, fake_home):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.install_dir = str(fake_pdk_root / "custom-root")
+    plan.config.pdk_source_type = PDKSourceType.GITHUB
+
+    executor = InstallExecutor(plan)
+    executor._build_steps()
+    labels = [step.label for step in executor.steps]
+
+    assert labels[0] == "Fetch PDK source from GitHub"
+    assert any(label.startswith("Copy PDK to") for label in labels)
 
 
 def test_build_steps_no_copy_when_target_matches_source(fake_pdk_root, fake_home):
@@ -137,6 +150,92 @@ def test_run_cmd_success(fake_pdk_root, fake_home):
 
     assert ok is True
     assert "hello" in output
+
+
+def test_github_needs_submodules_for_sg13g2_dev(fake_pdk_root, fake_home):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk_source_type = PDKSourceType.GITHUB
+    plan.config.github_branch = "dev"
+    executor = InstallExecutor(plan)
+
+    assert executor._github_needs_submodules() is True
+
+
+def test_github_needs_submodules_false_for_cmos5l_main(fake_pdk_root, fake_home):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk = PDKChoice.SG13CMOS5L
+    plan.config.pdk_source_type = PDKSourceType.GITHUB
+    plan.config.github_branch = "main"
+    executor = InstallExecutor(plan)
+
+    assert executor._github_needs_submodules() is False
+
+
+def test_fetch_github_source_branch_uses_recurse_for_sg13g2_dev(fake_pdk_root, fake_home, monkeypatch, tmp_path):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk_source_type = PDKSourceType.GITHUB
+    plan.config.github_branch = "dev"
+    executor = InstallExecutor(plan)
+    clone_dir = tmp_path / "clone"
+    clone_dir.mkdir()
+    (clone_dir / "ihp-sg13g2" / "libs.tech").mkdir(parents=True)
+    monkeypatch.setattr("installer.backend.executor.tempfile.mkdtemp", lambda prefix: str(clone_dir))
+
+    seen = []
+
+    def fake_run_cmd(cmd, cwd=None):
+        seen.append((cmd, cwd))
+        return True, "ok"
+
+    monkeypatch.setattr(executor, "_run_cmd", fake_run_cmd)
+
+    ok = executor._fetch_github_source()
+
+    assert ok is True
+    assert "--recurse-submodules" in seen[0][0]
+    assert executor._resolved_source_pdk_dir == str(clone_dir / "ihp-sg13g2")
+
+
+def test_fetch_github_source_commit_runs_checkout_and_submodules(fake_pdk_root, fake_home, monkeypatch, tmp_path):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk_source_type = PDKSourceType.GITHUB
+    plan.config.github_source_mode = GitHubSourceMode.COMMIT
+    plan.config.github_commit = "deadbeef"
+    executor = InstallExecutor(plan)
+    clone_dir = tmp_path / "clone"
+    clone_dir.mkdir()
+    (clone_dir / "ihp-sg13g2" / "libs.tech").mkdir(parents=True)
+    monkeypatch.setattr("installer.backend.executor.tempfile.mkdtemp", lambda prefix: str(clone_dir))
+
+    seen = []
+
+    def fake_run_cmd(cmd, cwd=None):
+        seen.append((cmd, cwd))
+        return True, "ok"
+
+    monkeypatch.setattr(executor, "_run_cmd", fake_run_cmd)
+
+    ok = executor._fetch_github_source()
+
+    assert ok is True
+    assert any(cmd == "git checkout deadbeef" for cmd, _ in seen)
+    assert any(cmd == "git submodule update --init --recursive" for cmd, _ in seen)
+
+
+def test_cleanup_temp_source_removes_directory(fake_pdk_root, fake_home, tmp_path):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    executor = InstallExecutor(plan)
+    temp_dir = tmp_path / "temp-src"
+    temp_dir.mkdir()
+    (temp_dir / "file.txt").write_text("x")
+    executor._temp_source_root = str(temp_dir)
+    executor._resolved_source_pdk_dir = str(temp_dir)
+
+    executor._cleanup_temp_source()
+
+    assert not temp_dir.exists()
+    assert executor._temp_source_root is None
+    assert executor._resolved_source_pdk_dir is None
 
 
 def test_run_emits_blank_line_and_step_header(fake_pdk_root, fake_home, monkeypatch):
