@@ -138,11 +138,29 @@ def test_populate_env_uses_three_columns_and_formats_missing_values(qtbot, insta
 
     page._populate_env(env_checks)
 
-    assert page.env_table.columnCount() == 3
-    assert page.env_table.item(0, 1).text() == "/tmp/pdk"
-    assert page.env_table.item(0, 2).text() == "Already set"
-    assert page.env_table.item(1, 1).text() == "---"
-    assert page.env_table.item(1, 2).text() == "Will set in .bashrc → $HOME/.klayout"
+    assert page.env_scroll.isVisible() is True
+    texts = [label.text() for label in page.env_report_widget.findChildren(type(page.result_label))]
+    assert "PDK_ROOT" in texts
+    assert "Current value: /tmp/pdk" in texts
+    assert "Action: Already set" in texts
+    assert "KLAYOUT_HOME" in texts
+    assert "Current value: ---" in texts
+    assert "Action: Will set in .bashrc → $HOME/.klayout" in texts
+
+
+def test_start_env_and_install_keeps_install_enabled_for_informational_env_state(qtbot, install_config, theme_manager, monkeypatch):
+    page = _make_page(qtbot, install_config, theme_manager)
+    page.plan = type("Plan", (), {"has_errors": lambda self: False, "env_checks": [], "tools": []})()
+    emitted = []
+    page.nav_state_changed.connect(emitted.append)
+    monkeypatch.setattr("installer.frontend.check_page.check_environment", lambda cfg: [
+        EnvCheckResult(variable="PDK_ROOT", is_set=False, current_value=None, expected_value="/tmp/pdk", action="Will set")
+    ])
+
+    page.start_env_and_install()
+
+    assert emitted[-1]["next_enabled"] is True
+    assert emitted[-1]["next_text"] == "Install"
 
 
 def test_refresh_overall_status_updates_result_label(qtbot, install_config, theme_manager):

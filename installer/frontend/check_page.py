@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QScrollArea,
     QGridLayout,
+    QFrame,
 )
 from PySide6.QtCore import Qt, Signal, QThread
 from PySide6.QtGui import QColor, QIcon
@@ -209,20 +210,19 @@ class CheckPage(QWidget):
 
         self.env_group = QGroupBox("Environment Variables")
         env_lay = QVBoxLayout()
-        self.env_table = QTableWidget()
-        self.env_table.verticalHeader().setVisible(False)
-        self.env_table.setColumnCount(3)
-        self.env_table.setHorizontalHeaderLabels(
-            ["Variable", "Current Value", "Action"]
-        )
-        env_header = self.env_table.horizontalHeader()
-        env_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        env_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        env_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.env_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.env_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.env_table.hide()
-        env_lay.addWidget(self.env_table)
+        self.env_scroll = QScrollArea()
+        self.env_scroll.setWidgetResizable(True)
+        self.env_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.env_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.env_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.env_report_widget = QWidget()
+        self.env_report_layout = QVBoxLayout(self.env_report_widget)
+        self.env_report_layout.setContentsMargins(0, 0, 0, 0)
+        self.env_report_layout.setSpacing(10)
+        self.env_report_layout.addStretch()
+        self.env_scroll.setWidget(self.env_report_widget)
+        self.env_scroll.hide()
+        env_lay.addWidget(self.env_scroll)
         self.env_group.setLayout(env_lay)
         self.env_group.hide()
         root.addWidget(self.env_group)
@@ -253,10 +253,44 @@ class CheckPage(QWidget):
         self.tools_group.hide()
         self.tools_table.hide()
         self.env_group.hide()
+        self.env_scroll.hide()
         self.install_log.hide()
         self.install_log.clear()
         self.install_result_label.hide()
         self.hint_label.hide()
+
+    def _clear_env_report(self):
+        while self.env_report_layout.count() > 1:
+            item = self.env_report_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _make_env_block(self, title: str, current_value: str, action: str) -> QWidget:
+        block = QWidget()
+        lay = QVBoxLayout(block)
+        lay.setContentsMargins(8, 6, 8, 6)
+        lay.setSpacing(4)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("env_item_title")
+        current_label = QLabel(f"Current value: {current_value}")
+        current_label.setObjectName("subtitle")
+        current_label.setWordWrap(True)
+        current_label.setToolTip(current_value if current_value != "---" else "")
+        action_label = QLabel(f"Action: {action}")
+        action_label.setObjectName("dim_note")
+        action_label.setWordWrap(True)
+
+        lay.addWidget(title_label)
+        lay.addWidget(current_label)
+        lay.addWidget(action_label)
+
+        divider = QLabel("")
+        divider.setFixedHeight(1)
+        divider.setObjectName("subseparator")
+        lay.addWidget(divider)
+        return block
 
     def _load_recommended_versions(self) -> dict:
         versions = {}
@@ -840,21 +874,14 @@ class CheckPage(QWidget):
     def _populate_env(self, env_checks):
         if not env_checks:
             return
-        self.env_table.setRowCount(len(env_checks))
+        self._clear_env_report()
         self.env_group.show()
-        self.env_table.show()
+        self.env_scroll.show()
 
-        for i, e in enumerate(env_checks):
-            self.env_table.setItem(i, 0, QTableWidgetItem(e.variable))
-            if e.is_set:
-                val_item = QTableWidgetItem(e.current_value or "---")
-            else:
-                val_item = QTableWidgetItem("---")
-            val_item.setToolTip(e.current_value or "")
-            self.env_table.setItem(i, 1, val_item)
-            if e.is_set:
-                self.env_table.setItem(i, 2, QTableWidgetItem(e.action))
-            else:
-                self.env_table.setItem(i, 2, QTableWidgetItem(
-                    f"{e.action} \u2192 {e.expected_value or ''}"
-                ))
+        for e in env_checks:
+            current_value = e.current_value or "---"
+            action = e.action if e.is_set else f"{e.action} \u2192 {e.expected_value or ''}"
+            self.env_report_layout.insertWidget(
+                self.env_report_layout.count() - 1,
+                self._make_env_block(e.variable, current_value, action),
+            )

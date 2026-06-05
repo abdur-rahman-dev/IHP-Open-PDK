@@ -34,6 +34,13 @@ QLabel#page_title {
     background-color: transparent;
 }
 
+QLabel#env_item_title {
+    color: @brand@;
+    font-size: 14px;
+    font-weight: bold;
+    background-color: transparent;
+}
+
 QLabel#step_label {
     color: @text_secondary@;
     font-size: 11px;
