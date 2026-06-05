@@ -40,8 +40,8 @@ def test_step0_next_text_normal_and_skip_toggle(qtbot, theme_manager, mock_env):
 
     window.choice_page.skip_tool_check_cb.click()
 
-    assert window.next_btn.text() == "Install"
-    assert window.next_btn.objectName() == "install_btn"
+    assert window.next_btn.text() == "Next >"
+    assert window.next_btn.objectName() == ""
 
 
 def test_invalid_local_source_disables_next(qtbot, theme_manager, mock_env, monkeypatch):

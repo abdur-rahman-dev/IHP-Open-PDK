@@ -156,13 +156,8 @@ class MainWindow(QMainWindow):
 
         if self.current_step == 0:
             self.back_btn.hide()
-            skip = self.choice_page.skip_tool_check_cb.isChecked()
-            if skip:
-                self.next_btn.setText("Install")
-                self.next_btn.setObjectName("install_btn")
-            else:
-                self.next_btn.setText("Next >")
-                self.next_btn.setObjectName("")
+            self.next_btn.setText("Next >")
+            self.next_btn.setObjectName("")
             self.next_btn.setEnabled(self._source_valid)
             self.next_btn.setStyle(self.next_btn.style())
         elif self.current_step == 1:
@@ -226,12 +221,8 @@ class MainWindow(QMainWindow):
 
     def _on_skip_tool_check_toggled(self, skip: bool):
         if self.current_step == 0:
-            if skip:
-                self.next_btn.setText("Install")
-                self.next_btn.setObjectName("install_btn")
-            else:
-                self.next_btn.setText("Next >")
-                self.next_btn.setObjectName("")
+            self.next_btn.setText("Next >")
+            self.next_btn.setObjectName("")
             self.next_btn.setStyle(self.next_btn.style())
 
     def _on_config_changed(self):
