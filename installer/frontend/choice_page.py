@@ -103,7 +103,7 @@ class ChoicePage(QWidget):
 
         self.github_mode_group = QButtonGroup(self)
         self.github_branch_radio = QRadioButton("Branch")
-        self.github_commit_radio = QRadioButton("Specific commit hash")
+        self.github_commit_radio = QRadioButton("Specific Commit Hash")
         self.github_branch_radio.setChecked(True)
         self.github_mode_group.addButton(self.github_branch_radio, 0)
         self.github_mode_group.addButton(self.github_commit_radio, 1)
@@ -160,7 +160,7 @@ class ChoicePage(QWidget):
         self.compile_va_cb.setChecked(True)
         self.mode_btn_group.buttonClicked.connect(self._on_mode_changed)
         ic_lay.addWidget(self.compile_va_cb)
-        self.skip_tool_check_cb = QCheckBox("Skip tool check")
+        self.skip_tool_check_cb = QCheckBox("Skip Tool Check")
         self.skip_tool_check_cb.setChecked(False)
         self.skip_tool_check_cb.toggled.connect(self.skip_tool_check_changed.emit)
         ic_lay.addWidget(self.skip_tool_check_cb)
