@@ -50,7 +50,7 @@ def main():
     app.setStyle("Fusion")
     app.setQuitOnLastWindowClosed(True)
 
-    theme_manager = ThemeManager(app, initial="system")
+    theme_manager = ThemeManager(app, initial="light")
 
     window = MainWindow(theme_manager)
     window.show()

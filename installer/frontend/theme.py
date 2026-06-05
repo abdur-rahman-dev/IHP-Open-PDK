@@ -185,11 +185,11 @@ def detect_system_theme() -> str:
 class ThemeManager(QObject):
     theme_changed = Signal(str)
 
-    def __init__(self, app: QApplication, initial: str = "system"):
+    def __init__(self, app: QApplication, initial: str = "light"):
         super().__init__()
         self.app = app
         self._current_theme = "light"
-        self._current_mode = "system"
+        self._current_mode = initial if initial in ("light", "dark", "system") else "light"
         self._qss_template_light = _load_qss("light")
         self._qss_template_dark = _load_qss("dark")
 
@@ -209,8 +209,8 @@ class ThemeManager(QObject):
 
     def create_combo(self, parent=None) -> QComboBox:
         combo = QComboBox()
-        combo.addItems(["System", "Light", "Dark"])
-        mode_map = {"system": 0, "light": 1, "dark": 2}
+        combo.addItems(["Light", "Dark"])
+        mode_map = {"light": 0, "dark": 1}
         combo.setCurrentIndex(mode_map.get(self._current_mode, 0))
         combo.setFixedWidth(100)
         combo.currentIndexChanged.connect(self._on_combo_changed)
@@ -225,7 +225,7 @@ class ThemeManager(QObject):
         self._apply(resolved)
 
     def _on_combo_changed(self, index: int):
-        modes = ["system", "light", "dark"]
+        modes = ["light", "dark"]
         self.set_theme(modes[index])
 
     def _apply(self, theme_name: str):
