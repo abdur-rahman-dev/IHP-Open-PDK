@@ -177,6 +177,46 @@ def test_back_navigation(qtbot, theme_manager, mock_env, monkeypatch):
     assert called == [0, 1]
 
 
+def test_install_success_enables_start_and_resets_to_defaults(qtbot, theme_manager, mock_env, monkeypatch):
+    window = _make_window(qtbot, theme_manager)
+    window.current_step = 2
+    window.choice_page.mode_change.setChecked(True)
+    window.choice_page.skip_tool_check_cb.setChecked(True)
+    called = []
+
+    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
+    window._on_install_finished(True)
+
+    assert window.back_btn.isEnabled() is True
+    assert window.back_btn.text() == "Start"
+
+    window._on_back()
+
+    assert called == [0]
+    assert window.choice_page.mode_new.isChecked() is True
+    assert window.choice_page.skip_tool_check_cb.isChecked() is False
+
+
+def test_install_failure_enables_back_and_preserves_values(qtbot, theme_manager, mock_env, monkeypatch):
+    window = _make_window(qtbot, theme_manager)
+    window.current_step = 2
+    window.choice_page.mode_change.setChecked(True)
+    window.choice_page.skip_tool_check_cb.setChecked(True)
+    called = []
+
+    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
+    window._on_install_finished(False)
+
+    assert window.back_btn.isEnabled() is True
+    assert window.back_btn.text() == "< Back"
+
+    window._on_back()
+
+    assert called == [0]
+    assert window.choice_page.mode_change.isChecked() is True
+    assert window.choice_page.skip_tool_check_cb.isChecked() is True
+
+
 def test_nav_state_changed_updates_buttons(qtbot, theme_manager, mock_env):
     window = _make_window(qtbot, theme_manager)
     window.current_step = 1

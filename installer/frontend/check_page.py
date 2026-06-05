@@ -109,6 +109,7 @@ class InstallWorker(QThread):
 
 class CheckPage(QWidget):
     nav_state_changed = Signal(dict)
+    install_finished = Signal(bool)
 
     ALL_TC_TOOLS = get_tool_check_tool_ids()
     DEFAULT_TC_TOOLS = ["openvaf/openvaf-r", "klayout"]
@@ -513,8 +514,9 @@ class CheckPage(QWidget):
         self.nav_state_changed.emit({
             "next_enabled": False,
             "next_text": "",
-            "back_enabled": False,
+            "back_enabled": True,
         })
+        self.install_finished.emit(success)
 
     def _get_status_color(self, status: ToolStatusEnum) -> QColor:
         if status == ToolStatusEnum.OK:

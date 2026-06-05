@@ -31,6 +31,8 @@ class MainWindow(QMainWindow):
         self.theme_manager = theme_manager
         self.current_step = 0
         self._source_valid = True
+        self._install_finished = False
+        self._install_succeeded = False
 
         script_dir = Path(__file__).resolve().parent
         for candidate in [script_dir, script_dir.parent]:
@@ -133,6 +135,7 @@ class MainWindow(QMainWindow):
         root.addLayout(nav_lay)
 
         self.check_page.nav_state_changed.connect(self._on_nav_state_changed)
+        self.check_page.install_finished.connect(self._on_install_finished)
         self.choice_page.skip_tool_check_changed.connect(self._on_skip_tool_check_toggled)
         self.choice_page.config_changed.connect(self._on_config_changed)
         self._update_ui_for_step()
@@ -169,7 +172,8 @@ class MainWindow(QMainWindow):
             self.next_btn.setStyle(self.next_btn.style())
         else:
             self.back_btn.show()
-            self.back_btn.setEnabled(False)
+            self.back_btn.setEnabled(self._install_finished)
+            self.back_btn.setText("Start" if self._install_finished and self._install_succeeded else "< Back")
             self.next_btn.hide()
 
     def _go_to_step(self, step: int):
@@ -183,6 +187,8 @@ class MainWindow(QMainWindow):
         if step == 1:
             self.check_page.show_tool_selection()
         elif step == 2:
+            self._install_finished = False
+            self._install_succeeded = False
             self.check_page.start_env_and_install()
 
     def _on_next_action(self):
@@ -217,7 +223,13 @@ class MainWindow(QMainWindow):
         if self.current_step == 1:
             self._go_to_step(0)
         elif self.current_step == 2:
-            self._go_to_step(1)
+            if self._install_finished:
+                if self._install_succeeded:
+                    self.choice_page.reset_to_defaults()
+                    self._refresh_source_validity()
+                self._go_to_step(0)
+            else:
+                self._go_to_step(1)
 
     def _on_skip_tool_check_toggled(self, skip: bool):
         if self.current_step == 0:
@@ -275,6 +287,11 @@ class MainWindow(QMainWindow):
                 self.next_btn.setStyle(self.next_btn.style())
         if "back_enabled" in state:
             self.back_btn.setEnabled(bool(state["back_enabled"]))
+
+    def _on_install_finished(self, success: bool):
+        self._install_finished = True
+        self._install_succeeded = success
+        self._update_ui_for_step()
 
     def closeEvent(self, event: QCloseEvent):
         cp = self.check_page

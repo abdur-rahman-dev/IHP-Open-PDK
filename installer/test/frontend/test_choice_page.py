@@ -162,3 +162,29 @@ def test_get_config_serializes_github_source_fields(qtbot, install_config):
     assert cfg.github_source_mode == GitHubSourceMode.COMMIT
     assert cfg.github_commit == "deadbeef"
     assert cfg.github_branch == "dev"
+
+
+def test_reset_to_defaults_restores_default_values(qtbot, install_config, tmp_path):
+    page = _make_page(qtbot, install_config)
+    page.set_base_dir(str(tmp_path))
+    page.mode_change.click()
+    page.skip_tool_check_cb.setChecked(True)
+    page.source_github.click()
+    page.github_commit_radio.click()
+    page.github_commit_input.setText("deadbeef")
+    page.sim_checks[Simulator.NGSPICE].setChecked(False)
+    page.sch_checks[SchematicEditor.XSCHEM].setChecked(False)
+    page.lay_checks[LayoutEditor.KLAYOUT].setChecked(False)
+
+    page.reset_to_defaults()
+
+    assert page._get_selected_pdk() == "ihp-sg13g2"
+    assert page.mode_new.isChecked() is True
+    assert page.compile_va_cb.isChecked() is True
+    assert page.skip_tool_check_cb.isChecked() is False
+    assert page.source_local.isChecked() is True
+    assert page.github_branch_radio.isChecked() is True
+    assert page.github_commit_input.text() == ""
+    assert page.sim_checks[Simulator.NGSPICE].isChecked() is True
+    assert page.sch_checks[SchematicEditor.XSCHEM].isChecked() is True
+    assert page.lay_checks[LayoutEditor.KLAYOUT].isChecked() is True

@@ -38,6 +38,35 @@ class ChoicePage(QWidget):
         self._build_ui()
         self._set_default_source_root_for_mode()
 
+    def reset_to_defaults(self):
+        for btn in self.pdk_btn_group.buttons():
+            if btn.property("pdk_value") == PDKChoice.SG13G2.value:
+                btn.setChecked(True)
+                break
+        self.mode_new.setChecked(True)
+        self.mode_change.setChecked(False)
+        self.compile_va_cb.setChecked(True)
+        self.skip_tool_check_cb.setChecked(False)
+        self.source_local.setChecked(True)
+        self.source_github.setChecked(False)
+        self.github_branch_radio.setChecked(True)
+        self.github_commit_radio.setChecked(False)
+        self.github_commit_input.clear()
+        self._update_github_branch_choices()
+        self._set_default_source_root_for_mode(force=True)
+
+        for sim, cb in self.sim_checks.items():
+            cb.setChecked(sim == Simulator.NGSPICE)
+        for ed, cb in self.sch_checks.items():
+            cb.setChecked(ed == SchematicEditor.XSCHEM)
+        for ed, cb in self.lay_checks.items():
+            cb.setChecked(ed == LayoutEditor.KLAYOUT)
+
+        self._refresh_eda_visibility()
+        self.set_source_status(True, "")
+        self._update_dir_for_pdk()
+        self.config_changed.emit()
+
     def _build_ui(self):
         root = QVBoxLayout(self)
         root.setSpacing(12)
