@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QLineEdit, QTableWidget
 
 from installer.backend.models import EnvCheckResult, LayoutEditor, ToolInfo, ToolStatusEnum
 from installer.frontend.check_page import CheckPage, _canonical_tool_name, _tool_display_name
@@ -21,6 +21,7 @@ def test_all_tc_tools_visible_list(qtbot, install_config, theme_manager):
     assert "openvaf/openvaf-r" in page.ALL_TC_TOOLS
     assert "buildxyceplugin" not in page.ALL_TC_TOOLS
     assert "gnucap-mg-vams" not in page.ALL_TC_TOOLS
+    assert page.tools_table.selectionMode() == QTableWidget.SelectionMode.NoSelection
 
 
 def test_openvaf_canonical_and_display_mapping():
@@ -124,6 +125,7 @@ def test_populate_tools_klayout_python_row_uses_package_dir_widget(qtbot, instal
     line_edit = widget.findChild(QLineEdit)
     assert line_edit is not None
     assert line_edit.text() == "/tmp/site-packages/klayout"
+    assert page.tools_table.item(1, 3).text() == "0.30.3"
     mismatch, message = page._check_klayout_python_mismatch("0.30.8")
     assert mismatch is True
     assert "Version mismatch" in message

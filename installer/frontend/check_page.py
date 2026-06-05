@@ -187,7 +187,7 @@ class CheckPage(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.tools_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.tools_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.tools_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self.tools_table.hide()
         tools_lay.addWidget(self.tools_table)
 
@@ -650,7 +650,10 @@ class CheckPage(QWidget):
             self.tools_table.setItem(i, 2, QTableWidgetItem(t.version or "N/A"))
 
             canonical = _canonical_tool_name(t.name)
-            rec = self._recommended_versions.get(canonical, "N/A")
+            if t.name == "klayout-python":
+                rec = self._recommended_versions.get("klayout", "N/A")
+            else:
+                rec = self._recommended_versions.get(canonical, "N/A")
             self.tools_table.setItem(i, 3, QTableWidgetItem(rec))
 
             if t.name == "klayout-python":
