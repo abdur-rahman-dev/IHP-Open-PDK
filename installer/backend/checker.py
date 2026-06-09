@@ -228,6 +228,46 @@ def validate_github_source(config: InstallConfig) -> tuple[bool, str]:
     return False, f"Commit '{commit}' was not found in the selected GitHub repository."
 
 
+def get_install_destination_check(config: InstallConfig) -> EnvCheckResult | None:
+    if config.install_mode.value != "new" or not config.install_dir:
+        return None
+
+    source_kind = "GitHub source" if config.pdk_source_type == PDKSourceType.GITHUB else "local source"
+    source_root = config.get_source_pdk_root()
+    target_root = config.get_target_pdk_root()
+    target_pdk_dir = config.get_target_pdk_dir()
+    will_sync = config.pdk_source_type == PDKSourceType.GITHUB or target_root != source_root
+
+    requires_confirmation = False
+    reason_code = None
+
+    if will_sync:
+        if not os.path.exists(target_pdk_dir):
+            action = f"Will populate destination from {source_kind}"
+            current_value = target_pdk_dir
+        elif os.path.isdir(target_pdk_dir) and not os.listdir(target_pdk_dir):
+            action = f"Will populate empty destination from {source_kind}"
+            current_value = target_pdk_dir
+        else:
+            action = f"Destination will be overridden with new contents from {source_kind}"
+            current_value = target_pdk_dir
+            requires_confirmation = True
+            reason_code = "install_destination_override"
+    else:
+        action = "Using current location"
+        current_value = target_pdk_dir
+
+    return EnvCheckResult(
+        variable="Install Destination",
+        is_set=not will_sync,
+        current_value=current_value,
+        expected_value=target_pdk_dir,
+        action=action,
+        requires_confirmation=requires_confirmation,
+        reason_code=reason_code,
+    )
+
+
 def check_tools(config: InstallConfig) -> list[ToolInfo]:
     results = []
 
@@ -505,34 +545,9 @@ def check_environment(config: InstallConfig) -> list[EnvCheckResult]:
             action="Will create symlink",
         ))
 
-    if config.install_mode.value == "new" and config.install_dir:
-        source_kind = "GitHub source" if config.pdk_source_type == PDKSourceType.GITHUB else "local source"
-        source_root = config.get_source_pdk_root()
-        target_root = config.get_target_pdk_root()
-        target_pdk_dir = config.get_target_pdk_dir()
-        will_sync = config.pdk_source_type == PDKSourceType.GITHUB or target_root != source_root
-
-        if will_sync:
-            if not os.path.exists(target_pdk_dir):
-                action = f"Will populate destination from {source_kind}"
-                current_value = target_pdk_dir
-            elif os.path.isdir(target_pdk_dir) and not os.listdir(target_pdk_dir):
-                action = f"Will populate empty destination from {source_kind}"
-                current_value = target_pdk_dir
-            else:
-                action = f"Destination will be overridden with new contents from {source_kind}"
-                current_value = target_pdk_dir
-        else:
-            action = "Using current location"
-            current_value = target_pdk_dir
-
-        results.append(EnvCheckResult(
-            variable="Install Destination",
-            is_set=not will_sync,
-            current_value=current_value,
-            expected_value=target_pdk_dir,
-            action=action,
-        ))
+    install_destination = get_install_destination_check(config)
+    if install_destination is not None:
+        results.append(install_destination)
 
     return results
 

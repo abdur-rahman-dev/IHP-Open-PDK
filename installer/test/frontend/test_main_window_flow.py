@@ -247,3 +247,29 @@ def test_step_names_are_current_three_step_flow(qtbot, theme_manager, mock_env):
     assert window._step_name(0) == "Configuration"
     assert window._step_name(1) == "Tool Requirements Check"
     assert window._step_name(2) == "Install"
+
+
+def test_step2_install_cancelled_by_override_confirmation_does_not_start(qtbot, theme_manager, mock_env, monkeypatch):
+    window = _make_window(qtbot, theme_manager)
+    window.current_step = 2
+    called = {"install": False}
+
+    monkeypatch.setattr(window.check_page, "confirm_install_if_needed", lambda: False)
+    monkeypatch.setattr(window.check_page, "start_install", lambda: called.__setitem__("install", True))
+
+    window._on_next_action()
+
+    assert called["install"] is False
+
+
+def test_step2_install_confirmed_by_override_confirmation_starts(qtbot, theme_manager, mock_env, monkeypatch):
+    window = _make_window(qtbot, theme_manager)
+    window.current_step = 2
+    called = {"install": False}
+
+    monkeypatch.setattr(window.check_page, "confirm_install_if_needed", lambda: True)
+    monkeypatch.setattr(window.check_page, "start_install", lambda: called.__setitem__("install", True))
+
+    window._on_next_action()
+
+    assert called["install"] is True

@@ -361,6 +361,8 @@ def test_check_environment_install_destination_override_for_nonempty_dir(monkeyp
 
     assert row.current_value == str(dest)
     assert "overridden with new contents from local source" in row.action
+    assert row.requires_confirmation is True
+    assert row.reason_code == "install_destination_override"
 
 
 def test_check_environment_install_destination_uses_github_wording(monkeypatch, fake_pdk_root, fake_home):
@@ -375,6 +377,50 @@ def test_check_environment_install_destination_uses_github_wording(monkeypatch, 
     row = next(item for item in results if item.variable == "Install Destination")
 
     assert "GitHub source" in row.action
+
+
+def test_check_environment_install_destination_empty_dir_has_no_confirmation(monkeypatch, fake_pdk_root, fake_home):
+    cfg = InstallConfig()
+    cfg.pdk_root = str(fake_pdk_root)
+    cfg.install_mode = InstallMode.NEW
+    cfg.install_dir = str(fake_pdk_root / "target-root")
+    dest = fake_pdk_root / "target-root" / "ihp-sg13g2"
+    dest.mkdir(parents=True)
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    results = check_environment(cfg)
+    row = next(item for item in results if item.variable == "Install Destination")
+
+    assert row.requires_confirmation is False
+    assert row.reason_code is None
+
+
+def test_check_environment_install_destination_missing_dir_has_no_confirmation(monkeypatch, fake_pdk_root, fake_home):
+    cfg = InstallConfig()
+    cfg.pdk_root = str(fake_pdk_root)
+    cfg.install_mode = InstallMode.NEW
+    cfg.install_dir = str(fake_pdk_root / "target-root")
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    results = check_environment(cfg)
+    row = next(item for item in results if item.variable == "Install Destination")
+
+    assert row.requires_confirmation is False
+    assert row.reason_code is None
+
+
+def test_check_environment_install_destination_same_location_has_no_confirmation(monkeypatch, fake_pdk_root, fake_home):
+    cfg = InstallConfig()
+    cfg.pdk_root = str(fake_pdk_root)
+    cfg.install_mode = InstallMode.NEW
+    cfg.install_dir = str(fake_pdk_root)
+
+    monkeypatch.setenv("HOME", str(fake_home))
+    results = check_environment(cfg)
+    row = next(item for item in results if item.variable == "Install Destination")
+
+    assert row.requires_confirmation is False
+    assert row.reason_code is None
 
 
 def test_check_environment_change_mode_omits_destination_row(monkeypatch, fake_pdk_root, fake_home):

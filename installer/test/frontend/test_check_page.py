@@ -1,9 +1,17 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLineEdit, QTableWidget
+from PySide6.QtWidgets import QLineEdit, QMessageBox, QTableWidget
 
-from installer.backend.models import EnvCheckResult, LayoutEditor, ToolInfo, ToolStatusEnum
+from installer.backend.models import (
+    EnvCheckResult,
+    InstallPlan,
+    LayoutEditor,
+    PDKSourceType,
+    Simulator,
+    ToolInfo,
+    ToolStatusEnum,
+)
 from installer.frontend.check_page import CheckPage, _canonical_tool_name, _tool_display_name
 
 
@@ -88,6 +96,7 @@ def test_populate_tools_installed_row_shows_path_tooltip(qtbot, install_config, 
     page._populate_tools(tools)
 
     item = page.tools_table.item(0, 4)
+    assert item is not None
     assert item.text() == "/usr/bin/python3"
     assert item.toolTip() == "/usr/bin/python3"
 
@@ -152,7 +161,7 @@ def test_populate_env_uses_three_columns_and_formats_missing_values(qtbot, insta
 
 def test_start_env_and_install_keeps_install_enabled_for_informational_env_state(qtbot, install_config, theme_manager, monkeypatch):
     page = _make_page(qtbot, install_config, theme_manager)
-    page.plan = type("Plan", (), {"has_errors": lambda self: False, "env_checks": [], "tools": []})()
+    page.plan = InstallPlan(config=install_config)
     emitted = []
     page.nav_state_changed.connect(emitted.append)
     monkeypatch.setattr("installer.frontend.check_page.check_environment", lambda cfg: [
@@ -167,7 +176,7 @@ def test_start_env_and_install_keeps_install_enabled_for_informational_env_state
 
 def test_refresh_overall_status_updates_result_label(qtbot, install_config, theme_manager):
     page = _make_page(qtbot, install_config, theme_manager)
-    page.plan = type("Plan", (), {})()
+    page.plan = InstallPlan(config=install_config)
     page.plan.tools = [ToolInfo(name="python3", installed=True, status=ToolStatusEnum.OK)]
     page.config.simulators = []
     page.config.compile_verilog_a = False
@@ -175,6 +184,66 @@ def test_refresh_overall_status_updates_result_label(qtbot, install_config, them
     page._refresh_overall_status()
 
     assert page.result_label.text() == "All checked tools found"
+
+
+def test_confirm_install_if_needed_returns_true_without_override(qtbot, install_config, theme_manager, monkeypatch):
+    page = _make_page(qtbot, install_config, theme_manager)
+    page.plan = InstallPlan(config=install_config)
+    seen = {"called": False}
+
+    def fake_question(*args, **kwargs):
+        seen["called"] = True
+        return QMessageBox.StandardButton.Yes
+
+    monkeypatch.setattr("installer.frontend.check_page.QMessageBox.question", fake_question)
+
+    assert page.confirm_install_if_needed() is True
+    assert seen["called"] is False
+
+
+def test_confirm_install_if_needed_blocks_on_cancel(qtbot, install_config, theme_manager, monkeypatch):
+    page = _make_page(qtbot, install_config, theme_manager)
+    page.plan = InstallPlan(config=install_config)
+    page.plan.env_checks = [
+        EnvCheckResult(
+            variable="Install Destination",
+            current_value="/tmp/target/ihp-sg13g2",
+            expected_value="/tmp/target/ihp-sg13g2",
+            action="Destination will be overridden",
+            requires_confirmation=True,
+            reason_code="install_destination_override",
+        )
+    ]
+
+    monkeypatch.setattr(
+        "installer.frontend.check_page.QMessageBox.question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Cancel,
+    )
+
+    assert page.confirm_install_if_needed() is False
+
+
+def test_confirm_install_if_needed_allows_on_confirm(qtbot, install_config, theme_manager, monkeypatch):
+    page = _make_page(qtbot, install_config, theme_manager)
+    page.config.pdk_source_type = PDKSourceType.GITHUB
+    page.plan = InstallPlan(config=install_config)
+    page.plan.env_checks = [
+        EnvCheckResult(
+            variable="Install Destination",
+            current_value="/tmp/target/ihp-sg13g2",
+            expected_value="/tmp/target/ihp-sg13g2",
+            action="Destination will be overridden",
+            requires_confirmation=True,
+            reason_code="install_destination_override",
+        )
+    ]
+
+    monkeypatch.setattr(
+        "installer.frontend.check_page.QMessageBox.question",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Yes,
+    )
+
+    assert page.confirm_install_if_needed() is True
 
 
 def test_check_klayout_python_from_path_reads_metadata(qtbot, install_config, theme_manager, tmp_path):
@@ -228,7 +297,8 @@ def test_missing_tool_browse_uses_current_field_directory(qtbot, install_config,
 
     monkeypatch.setattr("installer.frontend.check_page.QFileDialog.getOpenFileName", fake_open_file_name)
     monkeypatch.setattr(page, "_check_custom_path_version", lambda path, name: "43")
-    page.plan = type("Plan", (), {"tools": [tool]})()
+    page.plan = InstallPlan(config=install_config)
+    page.plan.tools = [tool]
 
     button = widget.findChildren(type(page.refresh_all_btn))[0]
     qtbot.mouseClick(button, Qt.LeftButton)
@@ -258,7 +328,8 @@ def test_klayout_python_browse_uses_current_field_directory(qtbot, install_confi
 
     monkeypatch.setattr("installer.frontend.check_page.QFileDialog.getExistingDirectory", fake_get_existing_directory)
     monkeypatch.setattr(page, "_check_klayout_python_from_path", lambda path: ("0.30.5", True))
-    page.plan = type("Plan", (), {"tools": tools})()
+    page.plan = InstallPlan(config=install_config)
+    page.plan.tools = tools
 
     button = widget.findChildren(type(page.refresh_all_btn))[0]
     qtbot.mouseClick(button, Qt.LeftButton)

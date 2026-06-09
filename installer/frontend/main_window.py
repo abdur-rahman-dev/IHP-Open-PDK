@@ -217,7 +217,8 @@ class MainWindow(QMainWindow):
             else:
                 self._go_to_step(2)
         elif self.current_step == 2:
-            self.check_page.start_install()
+            if self.check_page.confirm_install_if_needed():
+                self.check_page.start_install()
 
     def _on_back(self):
         if self.current_step == 1:

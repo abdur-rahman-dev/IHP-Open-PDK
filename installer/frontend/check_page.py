@@ -455,6 +455,36 @@ class CheckPage(QWidget):
             "back_enabled": True,
         })
 
+    def _get_install_destination_row(self):
+        env_checks = self.plan.env_checks if self.plan else []
+        return next((row for row in env_checks if row.variable == "Install Destination"), None)
+
+    def confirm_install_if_needed(self) -> bool:
+        if not self.plan:
+            self.plan = build_install_plan(self.config)
+
+        row = self._get_install_destination_row()
+        if not row or not row.requires_confirmation or row.reason_code != "install_destination_override":
+            return True
+
+        source_kind = "GitHub source" if self.config.pdk_source_type.value == "github" else "local source"
+        destination = row.expected_value or row.current_value or self.config.get_target_pdk_dir()
+        message = (
+            "The installer is about to overwrite an existing PDK destination.\n\n"
+            f"Source: {source_kind}\n"
+            f"Destination: {destination}\n\n"
+            "Existing files and folders in this destination will be replaced.\n"
+            "Do you want to continue?"
+        )
+        reply = QMessageBox.question(
+            self,
+            "Confirm Override",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return reply == QMessageBox.StandardButton.Yes
+
     def start_install(self):
         if not self.plan:
             self.plan = build_install_plan(self.config)

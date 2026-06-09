@@ -67,6 +67,8 @@ class EnvCheckResult:
     current_value: Optional[str] = None
     expected_value: Optional[str] = None
     action: str = ""
+    requires_confirmation: bool = False
+    reason_code: Optional[str] = None
 
 
 @dataclass
