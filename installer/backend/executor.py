@@ -8,7 +8,13 @@ import time
 from PySide6.QtCore import QThread, Signal
 
 from .models import InstallPlan, ExecStep, ExecStepStatus
-from .checker import OSDI_MODELS, XYCE_MODELS, get_github_repo_url, is_program_installed
+from .checker import (
+    OSDI_MODELS,
+    XYCE_MODELS,
+    get_github_repo_url,
+    get_install_destination_check,
+    is_program_installed,
+)
 
 
 class InstallExecutor(QThread):
@@ -160,6 +166,21 @@ class InstallExecutor(QThread):
         self.log_line.emit(f"  Prepared GitHub source: {resolved}")
         return True
 
+    def _requires_destination_override(self, dest_pdk_dir: str) -> bool:
+        row = get_install_destination_check(self.plan.config)
+        return bool(
+            row
+            and row.requires_confirmation
+            and row.reason_code == "install_destination_override"
+            and row.expected_value == dest_pdk_dir
+        )
+
+    def _remove_existing_path(self, path: str):
+        if os.path.islink(path) or not os.path.isdir(path):
+            os.unlink(path)
+        else:
+            shutil.rmtree(path)
+
     def _build_steps(self):
         cfg = self.plan.config
         pdk_root = self.plan.pdk_root or cfg.get_target_pdk_root()
@@ -227,7 +248,10 @@ class InstallExecutor(QThread):
                 return True
             try:
                 os.makedirs(os.path.dirname(dest_pdk_dir), exist_ok=True)
-                if os.path.exists(dest_pdk_dir):
+                if self._requires_destination_override(dest_pdk_dir) and os.path.lexists(dest_pdk_dir):
+                    self.log_line.emit("  Destination PDK already exists, replacing contents")
+                    self._remove_existing_path(dest_pdk_dir)
+                elif os.path.exists(dest_pdk_dir):
                     self.log_line.emit("  Destination PDK already exists, overriding contents")
                 shutil.copytree(src_pdk_dir, dest_pdk_dir, symlinks=True, dirs_exist_ok=True)
                 self.log_line.emit(f"  Copied {src_pdk_dir} -> {dest_pdk_dir}")
@@ -431,7 +455,7 @@ class InstallExecutor(QThread):
                 for fname in os.listdir(lib_src):
                     src = os.path.join(lib_src, fname)
                     dst = os.path.join(user_lib_dst, fname)
-                    if os.path.isfile(src) and not os.path.exists(dst):
+                    if os.path.isfile(src) and not os.path.lexists(dst):
                         try:
                             os.symlink(src, dst)
                         except OSError:
@@ -439,7 +463,7 @@ class InstallExecutor(QThread):
                 self.log_line.emit(f"  Linked user_lib -> {user_lib_dst}")
 
             examples_dst = os.path.join(ws_dir, "IHP-Open-PDK-SG13G2-Examples_prj")
-            if os.path.isdir(examples_src) and not os.path.exists(examples_dst):
+            if os.path.isdir(examples_src) and not os.path.lexists(examples_dst):
                 try:
                     shutil.copytree(examples_src, examples_dst)
                     if is_program_installed("sed"):
@@ -454,7 +478,7 @@ class InstallExecutor(QThread):
                     overall_ok = False
 
             pdk_symlink = os.path.join(ws_dir, "IHP-Open-PDK")
-            if not os.path.exists(pdk_symlink):
+            if not os.path.lexists(pdk_symlink):
                 try:
                     os.symlink(pdk_root, pdk_symlink)
                     self.log_line.emit(f"  Created PDK symlink: {pdk_symlink}")

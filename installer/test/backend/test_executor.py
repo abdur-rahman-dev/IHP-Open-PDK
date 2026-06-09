@@ -68,6 +68,28 @@ def test_copy_step_overrides_existing_destination(fake_pdk_root, fake_home):
     assert (dest / "libs.tech").exists()
 
 
+def test_copy_step_replaces_existing_destination_symlink_collision(fake_pdk_root, fake_home):
+    source_link_dir = fake_pdk_root / "ihp-sg13g2" / "libs.tech" / "ngspice"
+    source_link = source_link_dir / "install.py"
+    os.symlink("../xschem/install.py", source_link)
+
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.install_dir = str(fake_pdk_root / "custom-root")
+    executor = InstallExecutor(plan)
+    dest = fake_pdk_root / "custom-root" / "ihp-sg13g2"
+    collision = dest / "libs.tech" / "ngspice"
+    collision.mkdir(parents=True)
+    os.symlink("old-target", collision / "install.py")
+    (dest / "stale.txt").write_text("old\n")
+
+    ok = executor._exec_step(0, ExecStep(f"Copy PDK to {dest}"))
+
+    assert ok is True
+    assert not (dest / "stale.txt").exists()
+    assert os.path.islink(dest / "libs.tech" / "ngspice" / "install.py")
+    assert os.readlink(dest / "libs.tech" / "ngspice" / "install.py") == "../xschem/install.py"
+
+
 def test_build_steps_respects_compile_verilog_a_flag(fake_pdk_root, fake_home):
     plan = _make_plan(fake_pdk_root, fake_home)
     plan.config.compile_verilog_a = False
