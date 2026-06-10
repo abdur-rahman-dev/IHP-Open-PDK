@@ -218,6 +218,16 @@ def test_fetch_github_source_branch_uses_recurse_for_sg13g2_dev(fake_pdk_root, f
     assert executor._resolved_source_pdk_dir == str(clone_dir / "ihp-sg13g2")
 
 
+def test_resolve_cloned_source_pdk_dir_accepts_direct_pdk_layout(fake_pdk_root, fake_home, tmp_path):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk = PDKChoice.SG13CMOS5L
+    executor = InstallExecutor(plan)
+    clone_dir = tmp_path / "clone"
+    (clone_dir / "libs.tech").mkdir(parents=True)
+
+    assert executor._resolve_cloned_source_pdk_dir(str(clone_dir)) == str(clone_dir)
+
+
 def test_fetch_github_source_commit_runs_checkout_and_submodules(fake_pdk_root, fake_home, monkeypatch, tmp_path):
     plan = _make_plan(fake_pdk_root, fake_home)
     plan.config.pdk_source_type = PDKSourceType.GITHUB

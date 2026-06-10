@@ -30,7 +30,7 @@ def main():
     parser.add_argument("--mode", choices=["new", "change"])
     parser.add_argument("--source", choices=["local", "github"])
     parser.add_argument("--install-dir")
-    parser.add_argument("--local-source-root")
+    parser.add_argument("--local-source")
     parser.add_argument("--github-branch")
     parser.add_argument("--github-commit")
     parser.add_argument("--skip-tool-check", action="store_true")

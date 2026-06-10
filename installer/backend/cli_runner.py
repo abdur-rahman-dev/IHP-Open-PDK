@@ -66,8 +66,8 @@ def build_config_from_args(args: Namespace, pdk_root: str) -> InstallConfig:
         config.pdk_source_type = PDKSourceType(args.source)
     if getattr(args, "install_dir", None):
         config.install_dir = args.install_dir
-    if getattr(args, "local_source_root", None):
-        config.local_source_root = args.local_source_root
+    if getattr(args, "local_source", None):
+        config.local_source_root = args.local_source
     if getattr(args, "github_commit", None):
         config.github_source_mode = GitHubSourceMode.COMMIT
         config.github_commit = args.github_commit

@@ -121,9 +121,9 @@ class InstallConfig:
         return self.pdk.value
 
     def get_local_source_pdk_dir(self) -> str:
-        import os
         if self.local_source_root:
-            return os.path.normpath(self.local_source_root)
+            return self.local_source_root
+        import os
         return os.path.join(self.get_source_pdk_root(), self.get_selected_pdk_dirname())
 
     def get_default_github_branch(self) -> str:

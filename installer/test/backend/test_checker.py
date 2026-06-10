@@ -222,6 +222,7 @@ def test_validate_local_source_reports_missing_paths(tmp_path):
     ok, message = validate_local_source(cfg)
 
     assert ok is False
+    assert "ihp-sg13g2" in message
     assert "libs.tech" in message
     assert "libs.ref" in message
 

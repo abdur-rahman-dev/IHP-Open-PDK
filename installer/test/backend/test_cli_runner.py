@@ -13,7 +13,7 @@ def _args(**overrides):
         "mode": None,
         "source": None,
         "install_dir": None,
-        "local_source_root": None,
+        "local_source": None,
         "github_branch": None,
         "github_commit": None,
         "skip_tool_check": False,

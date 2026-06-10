@@ -101,11 +101,14 @@ class InstallExecutor(QThread):
         return self._resolved_source_pdk_dir or self._default_source_pdk_dir()
 
     def _resolve_cloned_source_pdk_dir(self, clone_dir: str) -> str | None:
+        def looks_like_pdk_dir(path: str) -> bool:
+            return os.path.isdir(os.path.join(path, "libs.tech"))
+
         pdk = self.plan.config.pdk.value
         nested = os.path.join(clone_dir, pdk)
-        if os.path.isdir(os.path.join(nested, "libs.tech")):
+        if looks_like_pdk_dir(nested):
             return nested
-        if os.path.isdir(os.path.join(clone_dir, "libs.tech")) and os.path.basename(clone_dir) == pdk:
+        if looks_like_pdk_dir(clone_dir):
             return clone_dir
         return None
 
