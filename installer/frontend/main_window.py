@@ -159,6 +159,7 @@ class MainWindow(QMainWindow):
 
         if self.current_step == 0:
             self.back_btn.hide()
+            self.back_btn.setText("< Back")
             self.next_btn.setText("Next >")
             self.next_btn.setObjectName("")
             self.next_btn.setEnabled(self._source_valid)
@@ -166,6 +167,7 @@ class MainWindow(QMainWindow):
         elif self.current_step == 1:
             self.back_btn.show()
             self.back_btn.setEnabled(True)
+            self.back_btn.setText("< Back")
             self.next_btn.setText("Next >")
             self.next_btn.setObjectName("")
             self.next_btn.setEnabled(False)
@@ -227,10 +229,17 @@ class MainWindow(QMainWindow):
             if self._install_finished:
                 if self._install_succeeded:
                     self.choice_page.reset_to_defaults()
+                    self._clear_completed_install_state()
                     self._refresh_source_validity()
-                self._go_to_step(0)
+                    self._go_to_step(0)
+                else:
+                    self._go_to_step(1)
             else:
                 self._go_to_step(1)
+
+    def _clear_completed_install_state(self):
+        self._install_finished = False
+        self._install_succeeded = False
 
     def _on_skip_tool_check_toggled(self, skip: bool):
         if self.current_step == 0:

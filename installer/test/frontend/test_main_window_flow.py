@@ -195,6 +195,8 @@ def test_install_success_enables_start_and_resets_to_defaults(qtbot, theme_manag
     assert called == [0]
     assert window.choice_page.mode_new.isChecked() is True
     assert window.choice_page.skip_tool_check_cb.isChecked() is False
+    assert window._install_finished is False
+    assert window._install_succeeded is False
 
 
 def test_install_failure_enables_back_and_preserves_values(qtbot, theme_manager, mock_env, monkeypatch):
@@ -212,9 +214,27 @@ def test_install_failure_enables_back_and_preserves_values(qtbot, theme_manager,
 
     window._on_back()
 
-    assert called == [0]
+    assert called == [1]
     assert window.choice_page.mode_change.isChecked() is True
     assert window.choice_page.skip_tool_check_cb.isChecked() is True
+
+
+def test_start_over_restores_regular_back_flow_on_next_install(qtbot, theme_manager, mock_env, monkeypatch):
+    window = _make_window(qtbot, theme_manager)
+    window.current_step = 2
+
+    monkeypatch.setattr(window.choice_page, "reset_to_defaults", lambda: None)
+
+    window._on_install_finished(True)
+    assert window.back_btn.text() == "Start"
+
+    window._on_back()
+
+    monkeypatch.setattr(window.check_page, "show_tool_selection", lambda: None)
+    window._go_to_step(1)
+
+    assert window.back_btn.text() == "< Back"
+    assert window.back_btn.isEnabled() is True
 
 
 def test_nav_state_changed_updates_buttons(qtbot, theme_manager, mock_env):
