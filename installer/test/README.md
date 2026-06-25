@@ -1,38 +1,34 @@
 # Installer Test Suite
 
-This directory contains automated tests for the IHP-Open-PDK installer.
+This directory contains the automated tests for the IHP-Open-PDK installer.
 
-The tests are split into three layers:
+The suite is organized into three layers:
 
-- `backend/` - fast unit tests for installer logic with no Qt dependency
-- `frontend/` - PySide6 widget/page tests using `pytest-qt`
-- `integration/` - higher-level subprocess tests for `install.py` and close behavior
+- `backend/` - fast unit tests for installer logic with no Qt widget dependency
+- `frontend/` - PySide6 page and window tests using `pytest-qt`
+- `integration/` - subprocess tests for `install.py`, non-GUI flows, and close behavior
 
-The shared fixtures for all suites live in `installer/test/conftest.py`.
+Shared fixtures for most tests live in `installer/test/conftest.py`. The integration tests also define an `installer_worktree` fixture locally so they can run against a detached `installer` branch worktree.
 
 ## Quick Start
 
-Run the full suite:
+Recommended full-suite command:
 
 ```bash
 QT_QPA_PLATFORM=offscreen ./venv/bin/python install.py --test=-q
 ```
 
-Run backend only:
+Direct pytest equivalent:
+
+```bash
+QT_QPA_PLATFORM=offscreen ./venv/bin/python -m pytest installer/test -q
+```
+
+Run one layer:
 
 ```bash
 ./venv/bin/python -m pytest installer/test/backend -q
-```
-
-Run frontend only:
-
-```bash
 QT_QPA_PLATFORM=offscreen ./venv/bin/python -m pytest installer/test/frontend -q
-```
-
-Run integration only:
-
-```bash
 QT_QPA_PLATFORM=offscreen ./venv/bin/python -m pytest installer/test/integration -q
 ```
 
@@ -43,7 +39,7 @@ Use the repository virtual environment:
 - `./venv/bin/python`
 - `./venv/bin/pip`
 
-Required packages:
+Python test dependencies:
 
 - `pytest`
 - `pytest-mock`
@@ -55,78 +51,117 @@ Install or refresh them with:
 ./venv/bin/pip install pytest pytest-mock pytest-qt
 ```
 
+Additional host dependency:
+
+- `git` - required by the integration suite because it creates a temporary detached worktree from the `installer` branch
+
 GUI tests run headless. Set:
 
 ```bash
 QT_QPA_PLATFORM=offscreen
 ```
 
-## Directory Layout
+## Current Layout
 
-Current layout:
+Test files:
 
 - `installer/test/conftest.py`
-- `installer/test/backend/test_models.py`
 - `installer/test/backend/test_checker.py`
+- `installer/test/backend/test_cli_runner.py`
 - `installer/test/backend/test_executor.py`
-- `installer/test/frontend/test_choice_page.py`
+- `installer/test/backend/test_models.py`
+- `installer/test/backend/test_pdk_registry.py`
+- `installer/test/backend/test_tool_registry.py`
 - `installer/test/frontend/test_check_page.py`
+- `installer/test/frontend/test_choice_page.py`
 - `installer/test/frontend/test_main_window_flow.py`
-- `installer/test/integration/test_install_cli.py`
 - `installer/test/integration/test_close_during_run.py`
+- `installer/test/integration/test_install_cli.py`
 
-What each file covers:
+Current count:
 
-- `test_models.py`
+- backend: 73 tests
+- frontend: 56 tests
+- integration: 9 tests
+- total: 138 tests
+
+## File Coverage Map
+
+### Backend
+
+- `installer/test/backend/test_models.py`
   - `InstallConfig` defaults
-  - normalized source/target PDK path behavior
-  - duplicate path regression protection
-  - plan error/warning helpers
-- `test_checker.py`
+  - normalized `PDK_ROOT` and `PDK` path behavior
+  - duplicate-path protection
+  - install plan helper behavior
+- `installer/test/backend/test_checker.py`
   - tool discovery
-  - version parsing
+  - version parsing and comparison
   - openvaf alias handling
-  - env checks
-  - `klayout-python` package and mismatch behavior
-- `test_executor.py`
-  - install step generation
-  - env writing
+  - `klayout-python` package detection and mismatch handling
+  - local and GitHub source validation
+  - environment checks, including install-destination override warnings
+- `installer/test/backend/test_executor.py`
+  - install-step generation
+  - environment file writing
   - `.spiceinit` handling
   - command execution behavior
-  - install log step separators
-- `test_choice_page.py`
+  - install log formatting
+- `installer/test/backend/test_cli_runner.py`
+  - `--eda-config` parsing
+  - CLI config construction from parsed args
+  - non-GUI override rejection behavior
+- `installer/test/backend/test_pdk_registry.py`
+  - PDK metadata for `ihp-sg13g2` and `ihp-sg13cmos5l`
+  - dependency and default-branch expectations
+- `installer/test/backend/test_tool_registry.py`
+  - visible tool grouping by type
+  - default tool-check candidates
+  - display-name mapping
+
+### Frontend
+
+- `installer/test/frontend/test_choice_page.py`
   - configuration page defaults
-  - PDK/mode toggles
-  - config serialization
-- `test_check_page.py`
-  - tool check page behavior
-  - environment report behavior
-  - custom path handling
-  - recommended versions and table contents
-- `test_main_window_flow.py`
-  - 3-step flow
-  - nav state changes
-  - skip-tool-check flow
-- `test_install_cli.py`
+  - PDK and source-mode switching
+  - derived install-directory defaults
+  - GitHub branch and commit UI state
+  - EDA selection serialization
+  - skip-tool-check behavior
+- `installer/test/frontend/test_check_page.py`
+  - tool selection visibility
+  - default tool-check rows
+  - recommended versions
+  - table content, tooltips, and browse widgets
+  - override confirmation behavior
+  - `klayout-python` path inspection
+- `installer/test/frontend/test_main_window_flow.py`
+  - current 3-step flow
+  - back/next button state changes
+  - source-validation gating
+  - skip-tool-check fast path
+  - install success/failure reset behavior
+  - override-confirmation flow
+
+### Integration
+
+- `installer/test/integration/test_install_cli.py`
   - `install.py --cli`
   - `install.py --test`
-- `test_close_during_run.py`
-  - subprocess-based close behavior checks
+  - `install.py --nogui` change-mode flow
+  - `--eda-config` replacement behavior
+  - override rejection without `--allow-override`
+- `installer/test/integration/test_close_during_run.py`
+  - clean close from idle GUI state
+  - clean close with a fake running executor
+  - source-validation switching between local and GitHub modes
 
 ## Running Tests
 
-### Full Suite Through Installer Entrypoint
-
-This is the recommended top-level command:
-
-```bash
-QT_QPA_PLATFORM=offscreen ./venv/bin/python install.py --test=-q
-```
-
 The `--test` flag delegates to pytest.
 
-- If no explicit pytest target is passed, it defaults to `installer/test/`
-- If explicit test files or directories are passed, those targets are used directly
+- if no explicit pytest target is passed, it defaults to `installer/test/`
+- if explicit test files or directories are passed, those targets are used directly
 
 Examples:
 
@@ -136,77 +171,39 @@ QT_QPA_PLATFORM=offscreen ./venv/bin/python install.py --test="-vv"
 QT_QPA_PLATFORM=offscreen ./venv/bin/python install.py --test="-q" installer/test/backend/test_models.py
 ```
 
-### Full Suite Directly With Pytest
-
-```bash
-QT_QPA_PLATFORM=offscreen ./venv/bin/python -m pytest installer/test -q
-```
-
-### Backend Suite
+Run a layer:
 
 ```bash
 ./venv/bin/python -m pytest installer/test/backend -q
-```
-
-Use backend tests when changing:
-
-- `installer/backend/models.py`
-- `installer/backend/checker.py`
-- `installer/backend/executor.py`
-
-### Frontend Suite
-
-```bash
 QT_QPA_PLATFORM=offscreen ./venv/bin/python -m pytest installer/test/frontend -q
-```
-
-Use frontend tests when changing:
-
-- `installer/frontend/choice_page.py`
-- `installer/frontend/check_page.py`
-- `installer/frontend/main_window.py`
-- `installer/frontend/theme.py` behavior that affects widget state or test setup
-
-### Integration Suite
-
-```bash
 QT_QPA_PLATFORM=offscreen ./venv/bin/python -m pytest installer/test/integration -q
 ```
 
-Use integration tests when changing:
-
-- `install.py`
-- process-level close behavior
-- CLI/output behavior
-- subprocess startup/shutdown flows
-
-### Run One File
+Run one file:
 
 ```bash
-./venv/bin/python -m pytest installer/test/backend/test_models.py -q
+./venv/bin/python -m pytest installer/test/backend/test_checker.py -q
 ```
 
-### Run a Single Test by Name
+Run a single test by name:
 
 ```bash
-./venv/bin/python -m pytest installer/test/backend/test_models.py -k target_name -q
+./venv/bin/python -m pytest installer/test/backend/test_checker.py -k override -q
 ```
 
-### Useful Pytest Flags
-
-- verbose output:
+Useful pytest flags:
 
 ```bash
 ./venv/bin/python -m pytest installer/test -vv
 ```
 
-- stop on first failure:
+Stop on first failure:
 
 ```bash
 ./venv/bin/python -m pytest installer/test -x
 ```
 
-- show print/log output:
+Show print and log output:
 
 ```bash
 ./venv/bin/python -m pytest installer/test -s
@@ -216,77 +213,59 @@ Use integration tests when changing:
 
 ### Backend
 
-Backend tests should be the first place to add coverage when the change does not require Qt widgets.
+Use backend tests first when the change can be validated from return values, object state, or generated plans.
 
-Backend tests are expected to cover:
-
-- normalized `PDK_ROOT` and `PDK` path behavior
+- path normalization
 - tool detection and version parsing
-- openvaf alias handling
-- `klayout-python` detection and mismatch logic
-- environment check generation
-- install step generation and executor behavior
-
-Choose the backend suite when:
-
-- the logic can be tested from return values or object state
-- no widget, signal loop, or visual state is involved
+- source validation
+- registry metadata
+- install-step generation
+- non-GUI CLI parsing and planning
 
 ### Frontend
 
-Frontend tests cover page logic and widget state with `pytest-qt`.
-
-Frontend tests are expected to cover:
+Use frontend tests when the behavior lives in a Qt page or window and widget state matters.
 
 - default widget selections
-- checkbox/radio interactions
+- checkbox and radio interactions
 - button text and enabled state
-- table content and tooltips
-- nav state transitions
-- page-level helper behavior
-
-Choose the frontend suite when:
-
-- the behavior lives in a Qt page, dialog, or window
-- signals, labels, tables, or button state matter
-- subprocess boundaries do not need to be tested
+- labels, tables, and tooltips
+- page-to-page navigation state
 
 ### Integration
 
-Integration tests validate public behavior from subprocess boundaries.
+Use integration tests when the real `install.py` entrypoint, subprocess boundaries, or aggressive close behavior must be validated safely.
 
-Integration tests are expected to cover:
-
-- CLI entrypoint behavior
 - delegated pytest behavior from `install.py --test`
-- close behavior that would be unsafe to test directly inside normal widget tests
-
-Choose the integration suite when:
-
-- the real entrypoint matters
-- a subprocess is the safest way to validate behavior
-- shutdown/process management is part of the bug or feature
+- `--cli` and `--nogui` behavior
+- override rejection at process level
+- shutdown and close handling
 
 ## Shared Fixtures
 
-`installer/test/conftest.py` currently provides shared setup for the suites.
+`installer/test/conftest.py` provides shared setup for most backend and frontend tests.
 
 ### `fake_pdk_root`
 
 Creates a synthetic PDK tree under `tmp_path`, including enough structure for installer logic such as:
 
-- `libs.tech/ngspice`
-- `libs.tech/xyce`
+- `libs.tech/ngspice/models`
+- `libs.tech/ngspice/osdi`
+- `libs.tech/xyce/models`
+- `libs.tech/xyce/plugins`
 - `libs.tech/gnucap`
 - `libs.tech/klayout`
 - `libs.tech/qucs-s`
-- `libs.tech/verilog-a`
+- `libs.tech/xschem`
+- `libs.tech/verilog-a/psp103`
+- `libs.tech/verilog-a/r3_cmc`
+- `libs.tech/verilog-a/mosvar`
 - selected `libs.ref` directories
 
 It also creates:
 
 - a fake `.spiceinit`
-- a fake `versions.txt`
+- a fake `versions.txt` with expected tool-version lines
 
 ### `fake_home`
 
@@ -313,36 +292,42 @@ Provides the current Qt application instance.
 
 Creates a real `ThemeManager` in light mode for frontend tests.
 
+## Integration-Local Fixtures and Helpers
+
+The integration files define their own helpers because they execute real subprocesses from a temporary worktree.
+
+- `installer_worktree`
+  - creates a detached temporary worktree from the `installer` branch
+  - removes the worktree after the test finishes
+- `_base_env()`
+  - preserves the current environment and sets `QT_QPA_PLATFORM=offscreen` if needed
+- `_with_home()` in `test_install_cli.py`
+  - overlays a temporary `HOME` directory for non-GUI install tests
+
 ## How To Add a New Test
 
-### 1. Pick the Correct Suite
+### 1. Pick the Correct Layer
 
 Use this rule of thumb:
 
-- `backend/`
-  - pure logic
-  - no Qt widgets needed
-- `frontend/`
-  - widget or page logic
-  - signals, labels, button states, table behavior
-- `integration/`
-  - subprocesses
-  - entrypoints
-  - close/process/shutdown behavior
+- `backend/` - pure logic, registry data, planning, parsing, no widgets
+- `frontend/` - page logic, widget state, signals, labels, tables, button state
+- `integration/` - subprocesses, entrypoints, shutdown behavior, process-level validation
 
-### 2. Choose the Right File
-
-Prefer extending an existing file when the behavior fits naturally.
+### 2. Prefer an Existing File
 
 Examples:
 
-- path normalization -> `test_models.py`
-- tool/env detection -> `test_checker.py`
-- install-step logic -> `test_executor.py`
-- config page behavior -> `test_choice_page.py`
-- tool/env page behavior -> `test_check_page.py`
-- nav flow -> `test_main_window_flow.py`
-- `install.py` behavior -> `test_install_cli.py`
+- config and plan models -> `installer/test/backend/test_models.py`
+- tool or environment checks -> `installer/test/backend/test_checker.py`
+- executor behavior -> `installer/test/backend/test_executor.py`
+- non-GUI arg parsing -> `installer/test/backend/test_cli_runner.py`
+- PDK definitions -> `installer/test/backend/test_pdk_registry.py`
+- tool registry defaults -> `installer/test/backend/test_tool_registry.py`
+- configuration page behavior -> `installer/test/frontend/test_choice_page.py`
+- tool and environment page behavior -> `installer/test/frontend/test_check_page.py`
+- main flow and navigation -> `installer/test/frontend/test_main_window_flow.py`
+- entrypoint and subprocess behavior -> `installer/test/integration/test_install_cli.py`
 
 Create a new file only when an area becomes large enough to justify separation.
 
@@ -356,8 +341,8 @@ Use:
 Examples:
 
 - `test_skip_tool_check_emits_signal`
-- `test_check_tools_klayout_python_mismatch`
-- `test_install_test_delegates_to_pytest`
+- `test_install_nogui_rejects_override_without_flag`
+- `test_tool_check_ids_include_openvaf_default_candidates`
 
 ### 4. Reuse Existing Fixtures
 
@@ -368,6 +353,7 @@ Before adding a new fixture, check whether one of these already solves the probl
 - `mock_env`
 - `install_config`
 - `theme_manager`
+- `installer_worktree` for process-level integration coverage
 
 Prefer extending shared fixtures only when many tests need the same new setup.
 
@@ -383,19 +369,19 @@ Prefer extending shared fixtures only when many tests need the same new setup.
 
 Examples:
 
-- changing `checker.py`:
+Changing `checker.py`:
 
 ```bash
 ./venv/bin/python -m pytest installer/test/backend/test_checker.py -q
 ```
 
-- changing `check_page.py`:
+Changing `check_page.py`:
 
 ```bash
 QT_QPA_PLATFORM=offscreen ./venv/bin/python -m pytest installer/test/frontend/test_check_page.py -q
 ```
 
-- changing `install.py`:
+Changing `install.py`:
 
 ```bash
 QT_QPA_PLATFORM=offscreen ./venv/bin/python -m pytest installer/test/integration/test_install_cli.py -q
@@ -403,26 +389,17 @@ QT_QPA_PLATFORM=offscreen ./venv/bin/python -m pytest installer/test/integration
 
 Then run the full suite.
 
-## How To Add a New Test Suite
-
-Only add a new suite if it has a clearly distinct purpose and will contain multiple related tests.
-
-If needed:
-
-1. create a new subdirectory under `installer/test/`
-2. add `__init__.py`
-3. document the suite in this README
-4. add example commands for running it
-5. explain why it is separate from backend/frontend/integration
-
-Do not create a new suite for a single isolated test file.
-
 ## Installer-Specific Pitfalls
 
 ### `install.py --test`
 
 - default path `installer/test/` is only appended when no explicit target is passed
-- explicit test files/directories must remain explicit
+- explicit test files and directories must remain explicit
+
+### `install.py --nogui`
+
+- non-GUI tests cover real CLI install flows, not just argument parsing
+- override-sensitive destinations must fail without `--allow-override`
 
 ### Hidden Simulator Dependencies
 
@@ -443,8 +420,16 @@ Tests should validate them through configured-tool behavior, not visible checkbo
 
 `MainWindow.closeEvent()` is intentionally aggressive and may call `os._exit(0)`.
 
-- do not test real destructive close behavior in ordinary frontend widget tests
+- do not test real destructive close behavior in ordinary widget tests
 - use subprocess-based integration tests instead
+
+### Worktree Requirement
+
+Integration tests assume:
+
+- the repository is available as a git checkout
+- the `installer` branch exists locally
+- `git worktree` can create a detached worktree for subprocess execution
 
 ### GUI Style Tests
 
@@ -454,26 +439,22 @@ Prefer assertions on:
 
 - labels
 - object names
-- visible/hidden state
-- enabled/disabled state
+- visible or hidden state
+- enabled or disabled state
 - table headers
 - cell values
 - tooltips
 
-### Branch Context Matters
-
-These tests belong to the `installer` branch. Running them from a branch where installer files are absent or untracked may fail or give misleading results.
-
 ## Current Baseline
 
-Known-good baseline at the time of writing:
+Known-good baseline command:
 
 ```bash
 QT_QPA_PLATFORM=offscreen ./venv/bin/python install.py --test=-q
 ```
 
-Expected result:
+Expected result at the time of writing:
 
-- `69 passed`
+- `138 passed`
 
 Use that as the baseline check after modifying installer code or tests.
