@@ -63,6 +63,18 @@ def test_show_tool_selection_emits_nav_state(qtbot, install_config, theme_manage
     assert blocker.args[0]["next_enabled"] is True
 
 
+def test_show_tool_selection_without_defaults_preserves_existing_selection(qtbot, install_config, theme_manager):
+    page = _make_page(qtbot, install_config, theme_manager)
+    page.show_tool_selection()
+    page.tc_checks["openvaf/openvaf-r"].setChecked(False)
+    page.tc_checks["python3"].setChecked(True)
+
+    page.show_tool_selection(use_defaults=False)
+
+    assert page.tc_checks["openvaf/openvaf-r"].isChecked() is False
+    assert page.tc_checks["python3"].isChecked() is True
+
+
 def test_tc_toggle_enables_next_when_any_selected(qtbot, install_config, theme_manager):
     page = _make_page(qtbot, install_config, theme_manager)
     page.show_tool_selection()

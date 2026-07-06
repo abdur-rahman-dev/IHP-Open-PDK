@@ -22,7 +22,6 @@ PDK_OPTIONS = [
 
 
 class ChoicePage(QWidget):
-    skip_tool_check_changed = Signal(bool)
     config_changed = Signal()
 
     PDK_DIR_MAP = {
@@ -46,7 +45,6 @@ class ChoicePage(QWidget):
         self.mode_new.setChecked(True)
         self.mode_change.setChecked(False)
         self.compile_va_cb.setChecked(True)
-        self.skip_tool_check_cb.setChecked(False)
         self.source_local.setChecked(True)
         self.source_github.setChecked(False)
         self.github_branch_radio.setChecked(True)
@@ -189,10 +187,6 @@ class ChoicePage(QWidget):
         self.compile_va_cb.setChecked(True)
         self.mode_btn_group.buttonClicked.connect(self._on_mode_changed)
         ic_lay.addWidget(self.compile_va_cb)
-        self.skip_tool_check_cb = QCheckBox("Skip Tool Check")
-        self.skip_tool_check_cb.setChecked(False)
-        self.skip_tool_check_cb.toggled.connect(self.skip_tool_check_changed.emit)
-        ic_lay.addWidget(self.skip_tool_check_cb)
         ic_lay.addStretch()
         ic_group.setLayout(ic_lay)
         grid.addWidget(ic_group, row, 0, 1, 2)
@@ -429,6 +423,5 @@ class ChoicePage(QWidget):
         )
 
         self.config.compile_verilog_a = self.compile_va_cb.isChecked()
-        self.config.skip_tool_check = self.skip_tool_check_cb.isChecked()
 
         return self.config

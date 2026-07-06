@@ -21,8 +21,9 @@ def test_initial_state_has_configuration_header_and_hidden_back(qtbot, theme_man
 
     assert window.current_step == 0
     assert window.header_label.text() == "Configuration"
-    assert window.step_label.text() == "Step 1 of 3: Configuration"
+    assert window.step_label.text() == "Step 1 of 2: Configuration"
     assert window.back_btn.isHidden() is True
+    assert window.tool_check_btn.isHidden() is False
     assert window.close_btn.isHidden() is False
 
 
@@ -31,17 +32,6 @@ def test_env_vars_auto_select_change_mode(qtbot, theme_manager, mock_env):
 
     assert window.choice_page.mode_change.isChecked() is True
     assert window.choice_page.mode_new.isChecked() is False
-
-
-def test_step0_next_text_normal_and_skip_toggle(qtbot, theme_manager, mock_env):
-    window = _make_window(qtbot, theme_manager)
-
-    assert window.next_btn.text() == "Next >"
-
-    window.choice_page.skip_tool_check_cb.click()
-
-    assert window.next_btn.text() == "Next >"
-    assert window.next_btn.objectName() == ""
 
 
 def test_invalid_local_source_disables_next(qtbot, theme_manager, mock_env, monkeypatch):
@@ -136,163 +126,83 @@ def test_switching_back_to_valid_local_reenables_next(qtbot, theme_manager, mock
     assert window.next_btn.isEnabled() is True
 
 
-def test_go_to_step_one_updates_buttons_and_calls_show_tool_selection(qtbot, theme_manager, mock_env, monkeypatch):
+def test_open_tool_check_window_creates_separate_window(qtbot, theme_manager, mock_env):
     window = _make_window(qtbot, theme_manager)
-    called = {"show": False}
 
-    monkeypatch.setattr(window.check_page, "show_tool_selection", lambda: called.__setitem__("show", True))
+    window.tool_check_btn.click()
 
-    window._go_to_step(1)
+    assert window.tool_check_window is not None
+    assert window.tool_check_window.isVisible() is True
+    assert window.tool_check_window.check_page.tc_section.isVisible() is True
 
-    assert window.current_step == 1
-    assert window.back_btn.isEnabled() is True
-    assert window.next_btn.text() == "Next >"
+
+def test_tool_check_window_back_returns_to_tool_selection(qtbot, theme_manager, mock_env):
+    window = _make_window(qtbot, theme_manager)
+
+    window.tool_check_btn.click()
+    tool_window = window.tool_check_window
+    tool_window.check_page.show_tool_selection()
+    tool_window.check_page.tc_checks["openvaf/openvaf-r"].setChecked(False)
+    tool_window.check_page.tc_checks["python3"].setChecked(True)
+    tool_window.check_page._on_tool_done([])
+
+    assert tool_window.back_btn.isHidden() is False
+    assert tool_window.check_btn.isHidden() is True
+
+    tool_window.back_btn.click()
+
+    assert tool_window.check_page._tc_phase == "selection"
+    assert tool_window.check_page.tc_section.isVisible() is True
+    assert tool_window.check_page.tc_checks["openvaf/openvaf-r"].isChecked() is False
+    assert tool_window.check_page.tc_checks["python3"].isChecked() is True
+    assert tool_window.back_btn.isHidden() is True
+    assert tool_window.check_btn.isHidden() is False
+
+
+def test_next_is_disabled_while_tool_check_window_is_open_and_reenabled_on_close(qtbot, theme_manager, mock_env):
+    window = _make_window(qtbot, theme_manager)
+
+    assert window.next_btn.isEnabled() is True
+
+    window.tool_check_btn.click()
+
     assert window.next_btn.isEnabled() is False
-    assert called["show"] is True
+    assert window.current_step == 0
+
+    window.tool_check_window.close()
+    qtbot.waitUntil(lambda: window.tool_check_window is None, timeout=1000)
+
+    assert window.next_btn.isEnabled() is True
 
 
-def test_go_to_step_two_calls_env_and_install(qtbot, theme_manager, mock_env, monkeypatch):
+def test_next_from_step0_goes_directly_to_install(qtbot, theme_manager, mock_env, monkeypatch):
+    window = _make_window(qtbot, theme_manager)
+    called = []
+
+    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
+
+    window._on_next_action()
+
+    assert called == [1]
+
+
+def test_go_to_install_step_calls_env_and_install(qtbot, theme_manager, mock_env, monkeypatch):
     window = _make_window(qtbot, theme_manager)
     called = {"env": False}
 
     monkeypatch.setattr(window.check_page, "start_env_and_install", lambda: called.__setitem__("env", True))
 
-    window._go_to_step(2)
+    window._go_to_step(1)
 
-    assert window.current_step == 2
-    assert window.back_btn.isEnabled() is False
+    assert window.current_step == 1
+    assert window.tool_check_btn.isHidden() is True
     assert window.next_btn.isHidden() is True
     assert called["env"] is True
 
 
-def test_skip_tool_check_jumps_directly_to_install(qtbot, theme_manager, mock_env, monkeypatch):
-    window = _make_window(qtbot, theme_manager)
-    called = []
-
-    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
-    window.choice_page.skip_tool_check_cb.setChecked(True)
-
-    window._on_next_action()
-
-    assert called == [2]
-
-
-def test_normal_next_from_step0_goes_to_tool_check(qtbot, theme_manager, mock_env, monkeypatch):
-    window = _make_window(qtbot, theme_manager)
-    called = []
-
-    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
-    window.choice_page.skip_tool_check_cb.setChecked(False)
-
-    window._on_next_action()
-
-    assert called == [1]
-
-
-def test_empty_eda_selection_does_not_block_progress(qtbot, theme_manager, mock_env, monkeypatch):
-    window = _make_window(qtbot, theme_manager)
-    called = []
-
-    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
-    for cb in window.choice_page.sim_checks.values():
-        cb.setChecked(False)
-    for cb in window.choice_page.sch_checks.values():
-        cb.setChecked(False)
-    for cb in window.choice_page.lay_checks.values():
-        cb.setChecked(False)
-
-    window._on_next_action()
-
-    assert called == [1]
-
-
-def test_back_navigation(qtbot, theme_manager, mock_env, monkeypatch):
-    window = _make_window(qtbot, theme_manager)
-    called = []
-
-    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
-    window.current_step = 1
-    window._on_back()
-    window.current_step = 2
-    window._on_back()
-
-    assert called == [0, 1]
-
-
-def test_install_success_enables_start_and_resets_to_defaults(qtbot, theme_manager, mock_env, monkeypatch):
-    window = _make_window(qtbot, theme_manager)
-    window.current_step = 2
-    window.choice_page.mode_change.setChecked(True)
-    window.choice_page.skip_tool_check_cb.setChecked(True)
-    called = []
-
-    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
-    window._on_install_finished(True)
-
-    assert window.back_btn.isEnabled() is True
-    assert window.back_btn.text() == "Start"
-
-    window._on_back()
-
-    assert called == [0]
-    assert window.choice_page.mode_new.isChecked() is True
-    assert window.choice_page.skip_tool_check_cb.isChecked() is False
-    assert window._install_finished is False
-    assert window._install_succeeded is False
-
-
-def test_install_failure_enables_back_and_preserves_values(qtbot, theme_manager, mock_env, monkeypatch):
-    window = _make_window(qtbot, theme_manager)
-    window.current_step = 2
-    window.choice_page.mode_change.setChecked(True)
-    window.choice_page.skip_tool_check_cb.setChecked(True)
-    called = []
-
-    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
-    window._on_install_finished(False)
-
-    assert window.back_btn.isEnabled() is True
-    assert window.back_btn.text() == "< Back"
-
-    window._on_back()
-
-    assert called == [1]
-    assert window.choice_page.mode_change.isChecked() is True
-    assert window.choice_page.skip_tool_check_cb.isChecked() is True
-
-
-def test_start_over_restores_regular_back_flow_on_next_install(qtbot, theme_manager, mock_env, monkeypatch):
-    window = _make_window(qtbot, theme_manager)
-    window.current_step = 2
-
-    monkeypatch.setattr(window.choice_page, "reset_to_defaults", lambda: None)
-
-    window._on_install_finished(True)
-    assert window.back_btn.text() == "Start"
-
-    window._on_back()
-
-    monkeypatch.setattr(window.check_page, "show_tool_selection", lambda: None)
-    window._go_to_step(1)
-
-    assert window.back_btn.text() == "< Back"
-    assert window.back_btn.isEnabled() is True
-
-
-def test_nav_state_changed_updates_buttons(qtbot, theme_manager, mock_env):
-    window = _make_window(qtbot, theme_manager)
-    window.current_step = 1
-
-    window._on_nav_state_changed({"next_enabled": True, "next_text": "Next >", "back_enabled": False})
-
-    assert window.next_btn.isEnabled() is True
-    assert window.next_btn.text() == "Next >"
-    assert window.back_btn.isEnabled() is False
-
-
 def test_nav_state_install_text_sets_install_style(qtbot, theme_manager, mock_env):
     window = _make_window(qtbot, theme_manager)
-    window.current_step = 2
+    window.current_step = 1
     window.next_btn.show()
 
     window._on_nav_state_changed({"next_enabled": True, "next_text": "Install", "back_enabled": True})
@@ -303,17 +213,16 @@ def test_nav_state_install_text_sets_install_style(qtbot, theme_manager, mock_en
     assert window.back_btn.isEnabled() is True
 
 
-def test_step_names_are_current_three_step_flow(qtbot, theme_manager, mock_env):
+def test_step_names_are_current_two_step_flow(qtbot, theme_manager, mock_env):
     window = _make_window(qtbot, theme_manager)
 
     assert window._step_name(0) == "Configuration"
-    assert window._step_name(1) == "Tool Requirements Check"
-    assert window._step_name(2) == "Install"
+    assert window._step_name(1) == "Install"
 
 
-def test_step2_install_cancelled_by_override_confirmation_does_not_start(qtbot, theme_manager, mock_env, monkeypatch):
+def test_install_step_cancelled_by_override_confirmation_does_not_start(qtbot, theme_manager, mock_env, monkeypatch):
     window = _make_window(qtbot, theme_manager)
-    window.current_step = 2
+    window.current_step = 1
     called = {"install": False}
 
     monkeypatch.setattr(window.check_page, "confirm_install_if_needed", lambda: False)
@@ -324,9 +233,9 @@ def test_step2_install_cancelled_by_override_confirmation_does_not_start(qtbot, 
     assert called["install"] is False
 
 
-def test_step2_install_confirmed_by_override_confirmation_starts(qtbot, theme_manager, mock_env, monkeypatch):
+def test_install_step_confirmed_by_override_confirmation_starts(qtbot, theme_manager, mock_env, monkeypatch):
     window = _make_window(qtbot, theme_manager)
-    window.current_step = 2
+    window.current_step = 1
     called = {"install": False}
 
     monkeypatch.setattr(window.check_page, "confirm_install_if_needed", lambda: True)
@@ -335,3 +244,39 @@ def test_step2_install_confirmed_by_override_confirmation_starts(qtbot, theme_ma
     window._on_next_action()
 
     assert called["install"] is True
+
+
+def test_back_from_success_resets_to_defaults_and_returns_to_configuration(qtbot, theme_manager, mock_env, monkeypatch):
+    window = _make_window(qtbot, theme_manager)
+    window.current_step = 1
+    window.choice_page.mode_change.setChecked(True)
+    called = []
+
+    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
+    window._on_install_finished(True)
+
+    assert window.back_btn.text() == "Start"
+
+    window._on_back()
+
+    assert called == [0]
+    assert window.choice_page.mode_new.isChecked() is True
+    assert window._install_finished is False
+    assert window._install_succeeded is False
+
+
+def test_back_from_failure_preserves_values_and_returns_to_configuration(qtbot, theme_manager, mock_env, monkeypatch):
+    window = _make_window(qtbot, theme_manager)
+    window.current_step = 1
+    window.choice_page.mode_change.setChecked(True)
+    called = []
+
+    monkeypatch.setattr(window, "_go_to_step", lambda step: called.append(step))
+    window._on_install_finished(False)
+
+    assert window.back_btn.text() == "< Back"
+
+    window._on_back()
+
+    assert called == [0]
+    assert window.choice_page.mode_change.isChecked() is True

@@ -27,6 +27,7 @@ from installer.backend.checker import (
 )
 from installer.frontend.choice_page import ChoicePage
 from installer.frontend.check_page import CheckPage
+from installer.frontend.tool_check_window import ToolCheckWindow
 
 
 class GitHubValidationWorker(QThread):
@@ -65,6 +66,7 @@ class MainWindow(QMainWindow):
         self._latest_github_validation_id = 0
         self._pending_github_validation: tuple[int, InstallConfig] | None = None
         self._github_validation_cache: dict[tuple[str, str], tuple[bool, str, str | None]] = {}
+        self.tool_check_window: ToolCheckWindow | None = None
 
         script_dir = Path(__file__).resolve().parent
         for candidate in [script_dir, script_dir.parent]:
@@ -141,7 +143,7 @@ class MainWindow(QMainWindow):
         self.stacked.addWidget(self.check_page)
 
         nav_lay = QHBoxLayout()
-        self.step_label = QLabel("Step 1 of 3: Configuration")
+        self.step_label = QLabel("Step 1 of 2: Configuration")
         self.step_label.setObjectName("step_label")
         self.step_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         nav_lay.addWidget(self.step_label)
@@ -152,6 +154,11 @@ class MainWindow(QMainWindow):
         self.back_btn.setObjectName("back_btn")
         self.back_btn.clicked.connect(self._on_back)
         nav_lay.addWidget(self.back_btn)
+
+        self.tool_check_btn = QPushButton("Tool Check")
+        self.tool_check_btn.setFixedWidth(120)
+        self.tool_check_btn.clicked.connect(self._open_tool_check_window)
+        nav_lay.addWidget(self.tool_check_btn)
 
         self.next_btn = QPushButton("Next >")
         self.next_btn.setFixedWidth(120)
@@ -168,7 +175,6 @@ class MainWindow(QMainWindow):
 
         self.check_page.nav_state_changed.connect(self._on_nav_state_changed)
         self.check_page.install_finished.connect(self._on_install_finished)
-        self.choice_page.skip_tool_check_changed.connect(self._on_skip_tool_check_toggled)
         self.choice_page.config_changed.connect(self._on_config_changed)
         self._update_ui_for_step()
         self._refresh_source_validity()
@@ -176,13 +182,12 @@ class MainWindow(QMainWindow):
     def _step_name(self, idx: int) -> str:
         names = [
             "Configuration",
-            "Tool Requirements Check",
             "Install",
         ]
         return names[idx]
 
     def _update_ui_for_step(self):
-        self.step_label.setText(f"Step {self.current_step + 1} of 3: {self._step_name(self.current_step)}")
+        self.step_label.setText(f"Step {self.current_step + 1} of 2: {self._step_name(self.current_step)}")
         self.header_label.setText(self._step_name(self.current_step))
 
         self.back_btn.show()
@@ -191,39 +196,54 @@ class MainWindow(QMainWindow):
 
         if self.current_step == 0:
             self.back_btn.hide()
-            self.back_btn.setText("< Back")
+            self.tool_check_btn.show()
             self.next_btn.setText("Next >")
             self.next_btn.setObjectName("")
-            self.next_btn.setEnabled(self._source_valid)
-            self.next_btn.setStyle(self.next_btn.style())
-        elif self.current_step == 1:
-            self.back_btn.show()
-            self.back_btn.setEnabled(True)
-            self.back_btn.setText("< Back")
-            self.next_btn.setText("Next >")
-            self.next_btn.setObjectName("")
-            self.next_btn.setEnabled(False)
+            self.next_btn.setEnabled(self._can_advance_from_configuration())
             self.next_btn.setStyle(self.next_btn.style())
         else:
             self.back_btn.show()
+            self.tool_check_btn.hide()
             self.back_btn.setEnabled(self._install_finished)
             self.back_btn.setText("Start" if self._install_finished and self._install_succeeded else "< Back")
             self.next_btn.hide()
 
     def _go_to_step(self, step: int):
         self.current_step = step
-        if step == 0:
-            self.stacked.setCurrentIndex(0)
-        else:
-            self.stacked.setCurrentIndex(1)
+        self.stacked.setCurrentIndex(step)
         self._update_ui_for_step()
 
         if step == 1:
-            self.check_page.show_tool_selection()
-        elif step == 2:
             self._install_finished = False
             self._install_succeeded = False
+            self.check_page.plan = None
             self.check_page.start_env_and_install()
+
+    def _tool_check_window_is_open(self) -> bool:
+        return self.tool_check_window is not None and self.tool_check_window.isVisible()
+
+    def _can_advance_from_configuration(self) -> bool:
+        return self._source_valid and not self._tool_check_window_is_open()
+
+    def _open_tool_check_window(self):
+        if self._tool_check_window_is_open():
+            self.tool_check_window.raise_()
+            self.tool_check_window.activateWindow()
+            return
+
+        config_snapshot = deepcopy(self.choice_page.get_config())
+        self.tool_check_window = ToolCheckWindow(config_snapshot, self.theme_manager, self)
+        self.tool_check_window.window_closed.connect(self._on_tool_check_window_closed)
+        self.tool_check_window.show()
+        self.tool_check_window.raise_()
+        self.tool_check_window.activateWindow()
+        if self.current_step == 0:
+            self.next_btn.setEnabled(self._can_advance_from_configuration())
+
+    def _on_tool_check_window_closed(self):
+        self.tool_check_window = None
+        if self.current_step == 0:
+            self.next_btn.setEnabled(self._can_advance_from_configuration())
 
     def _on_next_action(self):
         if self.current_step == 0:
@@ -241,43 +261,23 @@ class MainWindow(QMainWindow):
                         f"Cannot create directory: {config.install_dir}",
                     )
                     return
-            if config.skip_tool_check:
-                self._go_to_step(2)
-            else:
-                self._go_to_step(1)
+            self._go_to_step(1)
         elif self.current_step == 1:
-            if self.check_page._tc_phase == "selection":
-                self.check_page.run_tool_check()
-            else:
-                self._go_to_step(2)
-        elif self.current_step == 2:
             if self.check_page.confirm_install_if_needed():
                 self.check_page.start_install()
 
     def _on_back(self):
-        if self.current_step == 1:
-            self._go_to_step(0)
-        elif self.current_step == 2:
-            if self._install_finished:
-                if self._install_succeeded:
-                    self.choice_page.reset_to_defaults()
-                    self._clear_completed_install_state()
-                    self._refresh_source_validity()
-                    self._go_to_step(0)
-                else:
-                    self._go_to_step(1)
-            else:
-                self._go_to_step(1)
+        if self.current_step != 1:
+            return
+        if self._install_succeeded:
+            self.choice_page.reset_to_defaults()
+        self._clear_completed_install_state()
+        self._refresh_source_validity()
+        self._go_to_step(0)
 
     def _clear_completed_install_state(self):
         self._install_finished = False
         self._install_succeeded = False
-
-    def _on_skip_tool_check_toggled(self, skip: bool):
-        if self.current_step == 0:
-            self.next_btn.setText("Next >")
-            self.next_btn.setObjectName("")
-            self.next_btn.setStyle(self.next_btn.style())
 
     def _on_config_changed(self):
         if self.current_step == 0:
@@ -304,7 +304,7 @@ class MainWindow(QMainWindow):
             self.choice_page.set_source_status(ok, message if not ok else "")
             self._source_valid = ok
             if self.current_step == 0:
-                self.next_btn.setEnabled(self._source_valid)
+                self.next_btn.setEnabled(self._can_advance_from_configuration())
             return
 
         self._pending_github_validation = (request_id, deepcopy(config))
@@ -340,7 +340,7 @@ class MainWindow(QMainWindow):
             self.choice_page.set_source_status(ok, message if not ok else "")
             self._source_valid = ok
             if self.current_step == 0:
-                self.next_btn.setEnabled(self._source_valid)
+                self.next_btn.setEnabled(self._can_advance_from_configuration())
         if self._pending_github_validation:
             self._github_validation_timer.start()
 
@@ -390,19 +390,19 @@ class MainWindow(QMainWindow):
                 else:
                     self._queue_github_commit_validation(config)
                 if self.current_step == 0:
-                    self.next_btn.setEnabled(self._source_valid)
+                    self.next_btn.setEnabled(self._can_advance_from_configuration())
                 return
 
         self._source_valid = self._validate_source(config, show_dialog=False)
         if self.current_step == 0:
-            self.next_btn.setEnabled(self._source_valid)
+            self.next_btn.setEnabled(self._can_advance_from_configuration())
 
     def _on_nav_state_changed(self, state: dict):
-        if self.current_step not in (1, 2):
+        if self.current_step != 1:
             return
         if "next_enabled" in state:
             self.next_btn.setEnabled(bool(state["next_enabled"]))
-            if self.current_step == 2 and state.get("next_enabled"):
+            if state.get("next_text"):
                 self.next_btn.show()
         if "next_text" in state:
             text = state["next_text"]
@@ -412,7 +412,10 @@ class MainWindow(QMainWindow):
                     self.next_btn.setObjectName("install_btn")
                 else:
                     self.next_btn.setObjectName("")
+                self.next_btn.show()
                 self.next_btn.setStyle(self.next_btn.style())
+            else:
+                self.next_btn.hide()
         if "back_enabled" in state:
             self.back_btn.setEnabled(bool(state["back_enabled"]))
 
@@ -427,6 +430,8 @@ class MainWindow(QMainWindow):
             self._github_validation_worker.quit()
             self._github_validation_worker.wait(1000)
             self._github_validation_worker.terminate()
+        if self._tool_check_window_is_open():
+            self.tool_check_window.close()
         cp = self.check_page
         if cp.executor and cp.executor.isRunning():
             cp.executor.cancel()

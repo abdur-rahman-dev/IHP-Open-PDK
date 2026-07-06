@@ -321,13 +321,14 @@ class CheckPage(QWidget):
             "next_text": "Check",
         })
 
-    def show_tool_selection(self):
+    def show_tool_selection(self, use_defaults: bool = True):
         self.reset_view()
         self._tc_phase = "selection"
         self.tc_section.show()
         self.tc_scroll.show()
-        for tool, cb in self.tc_checks.items():
-            cb.setChecked(tool in self.DEFAULT_TC_TOOLS)
+        if use_defaults:
+            for tool, cb in self.tc_checks.items():
+                cb.setChecked(tool in self.DEFAULT_TC_TOOLS)
         self.status_label.hide()
         self.hint_label.setText("Select tools to check, then click Check.")
         self.hint_label.show()

@@ -15,7 +15,6 @@ def test_default_selections(qtbot, install_config):
     assert page._get_selected_pdk() == "ihp-sg13g2"
     assert page.mode_new.isChecked() is True
     assert page.compile_va_cb.isChecked() is True
-    assert page.skip_tool_check_cb.isChecked() is False
     assert page.source_local.isChecked() is True
     assert page.github_branch_radio.isChecked() is True
     assert page.github_branch_combo.currentText() == "dev"
@@ -70,15 +69,6 @@ def test_install_mode_rechecks_compile_va(qtbot, install_config):
     assert page.compile_va_cb.isChecked() is True
 
 
-def test_skip_tool_check_emits_signal(qtbot, install_config):
-    page = _make_page(qtbot, install_config)
-
-    with qtbot.waitSignal(page.skip_tool_check_changed, timeout=1000) as blocker:
-        page.skip_tool_check_cb.click()
-
-    assert blocker.args == [True]
-
-
 def test_switch_to_github_shows_github_controls(qtbot, install_config):
     page = _make_page(qtbot, install_config)
 
@@ -117,7 +107,6 @@ def test_get_config_serializes_current_ui_state(qtbot, install_config, tmp_path)
     page = _make_page(qtbot, install_config)
     page.set_base_dir(str(tmp_path))
     page.mode_change.click()
-    page.skip_tool_check_cb.click()
 
     page.sim_checks[Simulator.NGSPICE].setChecked(False)
     page.sim_checks[Simulator.XYCE].setChecked(True)
@@ -130,7 +119,6 @@ def test_get_config_serializes_current_ui_state(qtbot, install_config, tmp_path)
     assert cfg.install_mode == InstallMode.CHANGE
     assert cfg.pdk_source_type == PDKSourceType.LOCAL
     assert cfg.github_source_mode == GitHubSourceMode.BRANCH
-    assert cfg.skip_tool_check is True
     assert cfg.compile_verilog_a is False
     assert cfg.install_dir == str(tmp_path / "ihp-sg13g2")
     assert cfg.local_source_root == page.local_source_input.text()
@@ -168,7 +156,6 @@ def test_reset_to_defaults_restores_default_values(qtbot, install_config, tmp_pa
     page = _make_page(qtbot, install_config)
     page.set_base_dir(str(tmp_path))
     page.mode_change.click()
-    page.skip_tool_check_cb.setChecked(True)
     page.source_github.click()
     page.github_commit_radio.click()
     page.github_commit_input.setText("deadbeef")
@@ -181,7 +168,6 @@ def test_reset_to_defaults_restores_default_values(qtbot, install_config, tmp_pa
     assert page._get_selected_pdk() == "ihp-sg13g2"
     assert page.mode_new.isChecked() is True
     assert page.compile_va_cb.isChecked() is True
-    assert page.skip_tool_check_cb.isChecked() is False
     assert page.source_local.isChecked() is True
     assert page.github_branch_radio.isChecked() is True
     assert page.github_commit_input.text() == ""
