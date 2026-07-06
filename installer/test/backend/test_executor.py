@@ -233,6 +233,7 @@ def test_fetch_github_source_commit_runs_checkout_and_submodules(fake_pdk_root, 
     plan.config.pdk_source_type = PDKSourceType.GITHUB
     plan.config.github_source_mode = GitHubSourceMode.COMMIT
     plan.config.github_commit = "deadbeef"
+    plan.config.resolved_github_commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
     executor = InstallExecutor(plan)
     clone_dir = tmp_path / "clone"
     clone_dir.mkdir()
@@ -250,7 +251,7 @@ def test_fetch_github_source_commit_runs_checkout_and_submodules(fake_pdk_root, 
     ok = executor._fetch_github_source()
 
     assert ok is True
-    assert any(cmd == "git checkout deadbeef" for cmd, _ in seen)
+    assert any(cmd == "git checkout deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" for cmd, _ in seen)
     assert any(cmd == "git submodule update --init --recursive" for cmd, _ in seen)
 
 

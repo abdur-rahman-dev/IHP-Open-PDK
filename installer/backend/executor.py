@@ -141,7 +141,7 @@ class InstallExecutor(QThread):
             ok, _ = self._run_cmd(cmd)
             if not ok:
                 return False
-            commit = (cfg.github_commit or "").strip()
+            commit = (cfg.resolved_github_commit or cfg.github_commit or "").strip()
             if commit:
                 cmd = f"git checkout {commit}"
                 self.log_line.emit(f"  Running: {cmd}")

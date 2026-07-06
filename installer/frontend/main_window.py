@@ -1,6 +1,7 @@
 import os
 import signal
 import time
+from copy import deepcopy
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -15,13 +16,35 @@ from PySide6.QtWidgets import (
     QApplication,
     QScrollArea,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QFont, QCloseEvent, QPixmap
 
-from installer.backend.models import InstallConfig
-from installer.backend.checker import validate_github_source, validate_local_source
+from installer.backend.models import InstallConfig, GitHubSourceMode, PDKSourceType
+from installer.backend.checker import (
+    validate_github_commit_input,
+    validate_github_source,
+    validate_local_source,
+)
 from installer.frontend.choice_page import ChoicePage
 from installer.frontend.check_page import CheckPage
+
+
+class GitHubValidationWorker(QThread):
+    finished_validation = Signal(int, bool, str, object)
+
+    def __init__(self, request_id: int, config: InstallConfig):
+        super().__init__()
+        self.request_id = request_id
+        self.config = config
+
+    def run(self):
+        ok, message = validate_github_source(self.config)
+        self.finished_validation.emit(
+            self.request_id,
+            ok,
+            message,
+            self.config.resolved_github_commit,
+        )
 
 
 class MainWindow(QMainWindow):
@@ -33,6 +56,15 @@ class MainWindow(QMainWindow):
         self._source_valid = True
         self._install_finished = False
         self._install_succeeded = False
+        self._github_validation_worker: GitHubValidationWorker | None = None
+        self._github_validation_timer = QTimer(self)
+        self._github_validation_timer.setSingleShot(True)
+        self._github_validation_timer.setInterval(350)
+        self._github_validation_timer.timeout.connect(self._start_pending_github_validation)
+        self._github_validation_request_id = 0
+        self._latest_github_validation_id = 0
+        self._pending_github_validation: tuple[int, InstallConfig] | None = None
+        self._github_validation_cache: dict[tuple[str, str], tuple[bool, str, str | None]] = {}
 
         script_dir = Path(__file__).resolve().parent
         for candidate in [script_dir, script_dir.parent]:
@@ -251,8 +283,70 @@ class MainWindow(QMainWindow):
         if self.current_step == 0:
             self._refresh_source_validity()
 
+    def _github_validation_cache_key(self, config: InstallConfig) -> tuple[str, str]:
+        return (config.pdk.value, (config.github_commit or "").strip().lower())
+
+    def _invalidate_github_validation(self):
+        self._github_validation_request_id += 1
+        self._latest_github_validation_id = self._github_validation_request_id
+        self._pending_github_validation = None
+        self._github_validation_timer.stop()
+
+    def _queue_github_commit_validation(self, config: InstallConfig):
+        self._github_validation_request_id += 1
+        request_id = self._github_validation_request_id
+        self._latest_github_validation_id = request_id
+        cache_key = self._github_validation_cache_key(config)
+        cached = self._github_validation_cache.get(cache_key)
+        if cached is not None:
+            ok, message, resolved_commit = cached
+            self.config.resolved_github_commit = resolved_commit
+            self.choice_page.set_source_status(ok, message if not ok else "")
+            self._source_valid = ok
+            if self.current_step == 0:
+                self.next_btn.setEnabled(self._source_valid)
+            return
+
+        self._pending_github_validation = (request_id, deepcopy(config))
+        self.config.resolved_github_commit = None
+        self.choice_page.set_source_pending_status("Validating commit...")
+        self._source_valid = False
+        if self.current_step == 0:
+            self.next_btn.setEnabled(False)
+        if self._github_validation_worker and self._github_validation_worker.isRunning():
+            return
+        self._github_validation_timer.start()
+
+    def _start_pending_github_validation(self):
+        if not self._pending_github_validation:
+            return
+        if self._github_validation_worker and self._github_validation_worker.isRunning():
+            return
+        request_id, config = self._pending_github_validation
+        self._pending_github_validation = None
+        self._github_validation_worker = GitHubValidationWorker(request_id, config)
+        self._github_validation_worker.finished_validation.connect(self._on_github_validation_finished)
+        self._github_validation_worker.start()
+
+    def _on_github_validation_finished(self, request_id: int, ok: bool, message: str, resolved_commit):
+        sender = self.sender()
+        if sender is self._github_validation_worker:
+            self._github_validation_worker = None
+        current_config = self.choice_page.get_config()
+        cache_key = self._github_validation_cache_key(current_config)
+        if request_id == self._latest_github_validation_id:
+            self.config.resolved_github_commit = resolved_commit if ok else None
+            self._github_validation_cache[cache_key] = (ok, message, resolved_commit if ok else None)
+            self.choice_page.set_source_status(ok, message if not ok else "")
+            self._source_valid = ok
+            if self.current_step == 0:
+                self.next_btn.setEnabled(self._source_valid)
+        if self._pending_github_validation:
+            self._github_validation_timer.start()
+
     def _validate_source(self, config: InstallConfig, show_dialog: bool = False) -> bool:
-        if config.pdk_source_type.value == "local":
+        self._invalidate_github_validation()
+        if config.pdk_source_type == PDKSourceType.LOCAL:
             ok, message = validate_local_source(config)
             self.choice_page.set_source_status(ok, message)
             if not ok and show_dialog:
@@ -262,6 +356,15 @@ class MainWindow(QMainWindow):
                     f"The selected local source does not look like a valid {config.get_selected_pdk_dirname()} PDK.\n\n{message}",
                 )
             return ok
+
+        if config.github_source_mode == GitHubSourceMode.COMMIT and (config.github_commit or "").strip():
+            ok, message = validate_github_commit_input(config.github_commit or "")
+            if not ok:
+                config.resolved_github_commit = None
+                self.choice_page.set_source_status(False, message)
+                if show_dialog:
+                    QMessageBox.warning(self, "GitHub Source Unavailable", message)
+                return False
 
         ok, message = validate_github_source(config)
         self.choice_page.set_source_status(ok, message if not ok else "")
@@ -275,6 +378,21 @@ class MainWindow(QMainWindow):
 
     def _refresh_source_validity(self):
         config = self.choice_page.get_config()
+        if config.pdk_source_type == PDKSourceType.GITHUB:
+            commit = (config.github_commit or "").strip()
+            if config.github_source_mode == GitHubSourceMode.COMMIT and commit:
+                ok, message = validate_github_commit_input(commit)
+                if not ok:
+                    self._invalidate_github_validation()
+                    self.config.resolved_github_commit = None
+                    self.choice_page.set_source_status(False, message)
+                    self._source_valid = False
+                else:
+                    self._queue_github_commit_validation(config)
+                if self.current_step == 0:
+                    self.next_btn.setEnabled(self._source_valid)
+                return
+
         self._source_valid = self._validate_source(config, show_dialog=False)
         if self.current_step == 0:
             self.next_btn.setEnabled(self._source_valid)
@@ -304,6 +422,11 @@ class MainWindow(QMainWindow):
         self._update_ui_for_step()
 
     def closeEvent(self, event: QCloseEvent):
+        self._invalidate_github_validation()
+        if self._github_validation_worker and self._github_validation_worker.isRunning():
+            self._github_validation_worker.quit()
+            self._github_validation_worker.wait(1000)
+            self._github_validation_worker.terminate()
         cp = self.check_page
         if cp.executor and cp.executor.isRunning():
             cp.executor.cancel()

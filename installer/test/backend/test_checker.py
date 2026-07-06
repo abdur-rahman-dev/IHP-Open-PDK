@@ -296,11 +296,78 @@ def test_validate_github_source_rejects_missing_commit(monkeypatch):
         return _RunResult(stdout="abc123\trefs/heads/dev\n", stderr="")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        checker,
+        "resolve_github_commit",
+        lambda repo, commit: (False, f"Commit '{commit}' was not found in the selected GitHub repository.", None),
+    )
 
     ok, message = validate_github_source(cfg)
 
     assert ok is False
     assert "deadbeef" in message
+
+
+def test_validate_github_source_accepts_historical_commit_prefix(monkeypatch):
+    cfg = InstallConfig()
+    cfg.github_source_mode = GitHubSourceMode.COMMIT
+    cfg.github_commit = "deadbee"
+    monkeypatch.setattr(checker, "is_program_installed", lambda name: True)
+
+    def fake_run(*args, **kwargs):
+        return _RunResult(stdout="abc123\trefs/heads/dev\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        checker,
+        "resolve_github_commit",
+        lambda repo, commit: (True, "", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"),
+    )
+
+    ok, message = validate_github_source(cfg)
+
+    assert ok is True
+    assert message == ""
+    assert cfg.resolved_github_commit == "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+
+def test_validate_github_source_rejects_short_commit_prefix(monkeypatch):
+    cfg = InstallConfig()
+    cfg.github_source_mode = GitHubSourceMode.COMMIT
+    cfg.github_commit = "abc123"
+    monkeypatch.setattr(checker, "is_program_installed", lambda name: True)
+
+    def fake_run(*args, **kwargs):
+        return _RunResult(stdout="abc123\trefs/heads/dev\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    ok, message = validate_github_source(cfg)
+
+    assert ok is False
+    assert "at least 7 characters" in message
+
+
+def test_validate_github_source_rejects_ambiguous_commit_prefix(monkeypatch):
+    cfg = InstallConfig()
+    cfg.github_source_mode = GitHubSourceMode.COMMIT
+    cfg.github_commit = "deadbee"
+    monkeypatch.setattr(checker, "is_program_installed", lambda name: True)
+
+    def fake_run(*args, **kwargs):
+        return _RunResult(stdout="abc123\trefs/heads/dev\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        checker,
+        "resolve_github_commit",
+        lambda repo, commit: (False, f"Commit prefix '{commit}' is ambiguous in the selected GitHub repository.", None),
+    )
+
+    ok, message = validate_github_source(cfg)
+
+    assert ok is False
+    assert "ambiguous" in message
 
 
 def test_check_selected_tools_preserves_klayout_python(monkeypatch, install_config):

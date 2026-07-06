@@ -1,6 +1,8 @@
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import hashlib
 from pathlib import Path
 from typing import Optional
@@ -57,6 +59,10 @@ GITHUB_REPOS = {
     PDKChoice.SG13G2: "https://github.com/IHP-GmbH/IHP-Open-PDK.git",
     PDKChoice.SG13CMOS5L: "https://github.com/IHP-GmbH/ihp-sg13cmos5l.git",
 }
+
+GITHUB_COMMIT_MIN_LENGTH = 7
+GITHUB_COMMIT_MAX_LENGTH = 40
+_GITHUB_CLONE_CACHE: dict[str, str] = {}
 
 
 def is_program_installed(program: str) -> bool:
@@ -184,48 +190,121 @@ def validate_local_source(config: InstallConfig) -> tuple[bool, str]:
     return True, ""
 
 
+def validate_github_commit_input(commit: str) -> tuple[bool, str]:
+    normalized = (commit or "").strip()
+    if not normalized:
+        return True, ""
+    if not re.fullmatch(r"[0-9a-fA-F]+", normalized):
+        return False, "Commit hash must contain only hexadecimal characters."
+    if len(normalized) < GITHUB_COMMIT_MIN_LENGTH:
+        return False, f"Commit hash must be at least {GITHUB_COMMIT_MIN_LENGTH} characters long."
+    if len(normalized) > GITHUB_COMMIT_MAX_LENGTH:
+        return False, f"Commit hash must be at most {GITHUB_COMMIT_MAX_LENGTH} characters long."
+    return True, ""
+
+
+def _run_git_command(args: list[str], cwd: str | None = None, timeout: int = 30) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=timeout,
+        check=False,
+        start_new_session=True,
+        cwd=cwd,
+    )
+
+
+def _ls_remote(repo: str) -> tuple[bool, str, list[str]]:
+    try:
+        result = _run_git_command(["git", "ls-remote", repo], timeout=15)
+    except subprocess.TimeoutExpired:
+        return False, "Timed out while contacting GitHub. Please use From Local.", []
+    except OSError as exc:
+        return False, f"Unable to run git: {exc}. Please use From Local.", []
+
+    if result.returncode != 0:
+        msg = (result.stderr or result.stdout).strip() or "GitHub source is unreachable."
+        return False, f"{msg} Please use From Local.", []
+
+    return True, "", result.stdout.splitlines()
+
+
+def _ensure_github_clone_cache(repo: str) -> tuple[bool, str, str | None]:
+    cache_dir = _GITHUB_CLONE_CACHE.get(repo)
+    git_dir = os.path.join(cache_dir, ".git") if cache_dir else None
+    if cache_dir and git_dir and not os.path.isdir(git_dir):
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        cache_dir = None
+        _GITHUB_CLONE_CACHE.pop(repo, None)
+
+    if not cache_dir:
+        cache_dir = tempfile.mkdtemp(prefix="ihp-pdk-git-")
+        clone = _run_git_command(["git", "clone", "--filter=blob:none", "--no-checkout", repo, cache_dir], timeout=120)
+        if clone.returncode != 0:
+            shutil.rmtree(cache_dir, ignore_errors=True)
+            msg = (clone.stderr or clone.stdout).strip() or "Failed to clone GitHub repository."
+            return False, msg, None
+        _GITHUB_CLONE_CACHE[repo] = cache_dir
+
+    fetch = _run_git_command(["git", "fetch", "--force", "--tags", "--prune", "origin"], cwd=cache_dir, timeout=120)
+    if fetch.returncode != 0:
+        msg = (fetch.stderr or fetch.stdout).strip() or "Failed to refresh GitHub repository metadata."
+        return False, msg, None
+    return True, "", cache_dir
+
+
+def resolve_github_commit(repo: str, commit: str) -> tuple[bool, str, str | None]:
+    ok, message, cache_dir = _ensure_github_clone_cache(repo)
+    if not ok or not cache_dir:
+        return False, message or "GitHub source is unreachable.", None
+
+    result = _run_git_command(["git", "rev-parse", "--verify", f"{commit}^{{commit}}"], cwd=cache_dir, timeout=30)
+    if result.returncode == 0:
+        return True, "", result.stdout.strip()
+
+    stderr = (result.stderr or result.stdout).strip()
+    lowered = stderr.lower()
+    if "ambiguous" in lowered or "short object id" in lowered:
+        return False, f"Commit prefix '{commit}' is ambiguous in the selected GitHub repository.", None
+    return False, f"Commit '{commit}' was not found in the selected GitHub repository.", None
+
+
 def validate_github_source(config: InstallConfig) -> tuple[bool, str]:
+    config.resolved_github_commit = None
     if not is_program_installed("git"):
         return False, "Git is not installed. Please use From Local."
 
     repo = get_github_repo_url(config)
     ref = config.get_effective_github_ref()
-    try:
-        result = subprocess.run(
-            ["git", "ls-remote", repo],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=15,
-            check=False,
-            start_new_session=True,
-        )
-    except subprocess.TimeoutExpired:
-        return False, "Timed out while contacting GitHub. Please use From Local."
-    except OSError as exc:
-        return False, f"Unable to run git: {exc}. Please use From Local."
+    ok, message, remote_lines = _ls_remote(repo)
+    if not ok:
+        return False, message
 
-    if result.returncode != 0:
-        msg = (result.stderr or result.stdout).strip() or "GitHub source is unreachable."
-        return False, f"{msg} Please use From Local."
-
-    lines = [line.split()[0] for line in result.stdout.splitlines() if line.strip()]
+    remote_output = "\n".join(remote_lines)
     if config.github_source_mode.value == "branch":
         branch_ref = f"refs/heads/{ref}"
-        if branch_ref not in result.stdout:
+        if branch_ref not in remote_output:
             return False, f"Branch '{ref}' is not available in the selected GitHub repository."
         return True, ""
 
     commit = (config.github_commit or "").strip()
     if not commit:
         fallback_ref = f"refs/heads/{ref}"
-        if fallback_ref not in result.stdout:
+        if fallback_ref not in remote_output:
             return False, f"Fallback branch '{ref}' is not available in the selected GitHub repository."
         return True, ""
 
-    if any(sha.startswith(commit) for sha in lines):
+    ok, message = validate_github_commit_input(commit)
+    if not ok:
+        return False, message
+
+    ok, message, resolved_commit = resolve_github_commit(repo, commit)
+    if ok:
+        config.resolved_github_commit = resolved_commit
         return True, ""
-    return False, f"Commit '{commit}' was not found in the selected GitHub repository."
+    return False, message
 
 
 def get_install_destination_check(config: InstallConfig) -> EnvCheckResult | None:
@@ -432,6 +511,7 @@ def check_tools_for_names(tool_names: list[str], config: InstallConfig) -> list[
         github_source_mode=config.github_source_mode,
         github_branch=config.github_branch,
         github_commit=config.github_commit,
+        resolved_github_commit=config.resolved_github_commit,
         compile_verilog_a=config.compile_verilog_a,
         skip_tool_check=config.skip_tool_check,
     )

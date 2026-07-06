@@ -89,6 +89,7 @@ class InstallConfig:
     github_source_mode: GitHubSourceMode = GitHubSourceMode.BRANCH
     github_branch: Optional[str] = None
     github_commit: Optional[str] = None
+    resolved_github_commit: Optional[str] = None
     tools_to_check: list[str] = field(default_factory=list)
     compile_verilog_a: bool = True
     skip_tool_check: bool = False

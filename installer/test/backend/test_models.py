@@ -17,6 +17,7 @@ def test_install_config_defaults():
     assert cfg.skip_tool_check is False
     assert cfg.pdk_source_type == PDKSourceType.LOCAL
     assert cfg.github_source_mode == GitHubSourceMode.BRANCH
+    assert cfg.resolved_github_commit is None
     assert len(cfg.simulators) == 1
     assert len(cfg.schematic_editors) == 1
     assert len(cfg.layout_editors) == 1

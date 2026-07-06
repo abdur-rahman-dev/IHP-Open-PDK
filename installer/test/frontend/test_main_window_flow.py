@@ -79,6 +79,48 @@ def test_invalid_github_source_disables_next(qtbot, theme_manager, mock_env, mon
     assert window.next_btn.isEnabled() is False
 
 
+def test_commit_prefix_shorter_than_min_disables_next_without_remote_validation(qtbot, theme_manager, mock_env, monkeypatch):
+    calls = {"count": 0}
+
+    def fake_validate(cfg):
+        calls["count"] += 1
+        return True, ""
+
+    monkeypatch.setattr("installer.frontend.main_window.validate_github_source", fake_validate)
+    window = _make_window(qtbot, theme_manager)
+
+    window.choice_page.source_github.click()
+    window.choice_page.github_commit_radio.click()
+    count_before_short_input = calls["count"]
+    window.choice_page.github_commit_input.setText("abc123")
+    window._refresh_source_validity()
+
+    assert window.next_btn.isEnabled() is False
+    assert "at least 7 characters" in window.choice_page.source_status.text()
+    assert calls["count"] == count_before_short_input
+
+
+def test_valid_historical_commit_prefix_reenables_next_after_background_validation(qtbot, theme_manager, mock_env, monkeypatch):
+    def fake_validate(cfg):
+        cfg.resolved_github_commit = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+        return True, ""
+
+    monkeypatch.setattr("installer.frontend.main_window.validate_github_source", fake_validate)
+    window = _make_window(qtbot, theme_manager)
+    window._github_validation_timer.setInterval(0)
+
+    window.choice_page.source_github.click()
+    window.choice_page.github_commit_radio.click()
+    window.choice_page.github_commit_input.setText("deadbee")
+
+    assert window.next_btn.isEnabled() is False
+
+    qtbot.waitUntil(lambda: window.next_btn.isEnabled(), timeout=2000)
+
+    assert window.config.resolved_github_commit == "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+    assert window.choice_page.source_status.isHidden() is True
+
+
 def test_switching_back_to_valid_local_reenables_next(qtbot, theme_manager, mock_env, monkeypatch):
     monkeypatch.setattr("installer.frontend.main_window.validate_github_source", lambda cfg: (False, "use local"))
     monkeypatch.setattr("installer.frontend.main_window.validate_local_source", lambda cfg: (True, ""))

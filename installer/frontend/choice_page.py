@@ -374,6 +374,12 @@ class ChoicePage(QWidget):
             self.source_status.show()
         self.source_status.setStyle(self.source_status.style())
 
+    def set_source_pending_status(self, message: str):
+        self.source_status.setObjectName("")
+        self.source_status.setText(message)
+        self.source_status.show()
+        self.source_status.setStyle(self.source_status.style())
+
     def _update_dir_for_pdk(self):
         if not self._base_dir:
             return
