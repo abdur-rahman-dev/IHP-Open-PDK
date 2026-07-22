@@ -98,7 +98,7 @@ def test_eda_choices_are_driven_by_supported_tools(qtbot, install_config):
 
     assert page.sim_checks[Simulator.NGSPICE].isVisible() is True
     assert page.sim_checks[Simulator.XYCE].isVisible() is True
-    assert page.sim_checks[Simulator.GNUCAP].isVisible() is True
+    assert Simulator.GNUCAP not in page.sim_checks
     assert page.sch_checks[SchematicEditor.XSCHEM].isVisible() is True
     assert page.lay_checks[LayoutEditor.KLAYOUT].isVisible() is True
 
@@ -174,3 +174,19 @@ def test_reset_to_defaults_restores_default_values(qtbot, install_config, tmp_pa
     assert page.sim_checks[Simulator.NGSPICE].isChecked() is True
     assert page.sch_checks[SchematicEditor.XSCHEM].isChecked() is True
     assert page.lay_checks[LayoutEditor.KLAYOUT].isChecked() is True
+
+
+def test_get_config_serializes_sg13g2_dependency_controls(qtbot, install_config):
+    page = _make_page(qtbot, install_config)
+    for button in page.pdk_btn_group.buttons():
+        if button.property("pdk_value") == PDKChoice.SG13CMOS5L.value:
+            button.click()
+            break
+    page.set_dependency_state(show_fetch=True, target_valid=True)
+    page.fetch_sg13g2_cb.setChecked(True)
+    page.override_sg13g2_cb.setChecked(True)
+
+    cfg = page.get_config()
+
+    assert cfg.fetch_dependencies_from_github is True
+    assert cfg.override_existing_sg13g2 is True

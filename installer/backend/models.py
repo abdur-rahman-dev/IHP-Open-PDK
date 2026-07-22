@@ -90,6 +90,8 @@ class InstallConfig:
     github_branch: Optional[str] = None
     github_commit: Optional[str] = None
     resolved_github_commit: Optional[str] = None
+    fetch_dependencies_from_github: bool = False
+    override_existing_sg13g2: bool = False
     tools_to_check: list[str] = field(default_factory=list)
     compile_verilog_a: bool = True
     skip_tool_check: bool = False
@@ -159,6 +161,10 @@ class InstallConfig:
             return os.path.join(norm, self.pdk.value)
         return os.path.join(self.get_target_pdk_root(), self.pdk.value)
 
+    def get_target_pdk_dir_for(self, pdk_id: str) -> str:
+        import os
+        return os.path.join(self.get_target_pdk_root(), pdk_id)
+
     def get_pdk_root(self) -> str:
         return self.get_target_pdk_root()
 
@@ -214,6 +220,12 @@ class InstallPlan:
             f"| Schematic Editors | {', '.join(e.value for e in self.config.schematic_editors)} |",
             f"| Layout Editors | {', '.join(e.value for e in self.config.layout_editors)} |",
         ]
+
+        if self.config.pdk == PDKChoice.SG13CMOS5L:
+            lines += [
+                f"| Fetch Missing SG13G2 | {self.config.fetch_dependencies_from_github} |",
+                f"| Override Existing SG13G2 | {self.config.override_existing_sg13g2} |",
+            ]
 
         if self.config.install_dir:
             lines += [

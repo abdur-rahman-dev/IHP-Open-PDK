@@ -11,10 +11,14 @@ from .models import InstallPlan, ExecStep, ExecStepStatus
 from .checker import (
     OSDI_MODELS,
     XYCE_MODELS,
+    get_sg13g2_install_source,
+    get_sg13g2_local_source_dir,
     get_github_repo_url,
     get_install_destination_check,
+    get_sg13g2_destination_check,
     is_program_installed,
 )
+from .pdk_registry import get_pdk_definition
 
 
 class InstallExecutor(QThread):
@@ -31,6 +35,8 @@ class InstallExecutor(QThread):
         self._current_proc: subprocess.Popen | None = None
         self._temp_source_root: str | None = None
         self._resolved_source_pdk_dir: str | None = None
+        self._temp_dependency_root: str | None = None
+        self._resolved_dependency_pdk_dir: str | None = None
 
     def cancel(self):
         self._cancelled = True
@@ -100,11 +106,11 @@ class InstallExecutor(QThread):
     def _resolved_source_pdk_path(self) -> str:
         return self._resolved_source_pdk_dir or self._default_source_pdk_dir()
 
-    def _resolve_cloned_source_pdk_dir(self, clone_dir: str) -> str | None:
+    def _resolve_cloned_source_pdk_dir(self, clone_dir: str, pdk: str | None = None) -> str | None:
         def looks_like_pdk_dir(path: str) -> bool:
             return os.path.isdir(os.path.join(path, "libs.tech"))
 
-        pdk = self.plan.config.pdk.value
+        pdk = pdk or self.plan.config.pdk.value
         nested = os.path.join(clone_dir, pdk)
         if looks_like_pdk_dir(nested):
             return nested
@@ -113,13 +119,16 @@ class InstallExecutor(QThread):
         return None
 
     def _cleanup_temp_source(self):
-        if self._temp_source_root and os.path.exists(self._temp_source_root):
-            try:
-                shutil.rmtree(self._temp_source_root)
-            except OSError as exc:
-                self.log_line.emit(f"  Warning: failed to remove temp source: {exc}")
+        for temp_root in (self._temp_source_root, self._temp_dependency_root):
+            if temp_root and os.path.exists(temp_root):
+                try:
+                    shutil.rmtree(temp_root)
+                except OSError as exc:
+                    self.log_line.emit(f"  Warning: failed to remove temp source: {exc}")
         self._temp_source_root = None
         self._resolved_source_pdk_dir = None
+        self._temp_dependency_root = None
+        self._resolved_dependency_pdk_dir = None
 
     def _fetch_github_source(self) -> bool:
         cfg = self.plan.config
@@ -169,13 +178,47 @@ class InstallExecutor(QThread):
         self.log_line.emit(f"  Prepared GitHub source: {resolved}")
         return True
 
+    def _fetch_sg13g2_dependency(self) -> bool:
+        pdk_id = "ihp-sg13g2"
+        pdk_def = get_pdk_definition(pdk_id)
+        clone_dir = tempfile.mkdtemp(prefix="ihp-sg13g2-src-")
+        self._temp_dependency_root = clone_dir
+        cmd = (
+            f"git clone --branch {pdk_def.default_branch} --recurse-submodules "
+            f"{pdk_def.repo_url} {clone_dir}"
+        )
+        self.log_line.emit(f"  Running: {cmd}")
+        ok, _ = self._run_cmd(cmd)
+        if not ok:
+            return False
+
+        resolved = self._resolve_cloned_source_pdk_dir(clone_dir, pdk_id)
+        if not resolved:
+            self.log_line.emit("  Cloned repository does not contain expected PDK structure for ihp-sg13g2")
+            return False
+        self._resolved_dependency_pdk_dir = resolved
+        self.log_line.emit(f"  Prepared SG13G2 GitHub source: {resolved}")
+        return True
+
+    def _dependency_source_pdk_path(self) -> str:
+        return (
+            self._resolved_dependency_pdk_dir
+            or get_sg13g2_local_source_dir(self.plan.config)
+        )
+
     def _requires_destination_override(self, dest_pdk_dir: str) -> bool:
-        row = get_install_destination_check(self.plan.config)
-        return bool(
-            row
-            and row.requires_confirmation
+        rows = list(self.plan.env_checks)
+        for row in (
+            get_install_destination_check(self.plan.config),
+            get_sg13g2_destination_check(self.plan.config),
+        ):
+            if row is not None and row not in rows:
+                rows.append(row)
+        return any(
+            row.requires_confirmation
             and row.reason_code == "install_destination_override"
             and row.expected_value == dest_pdk_dir
+            for row in rows
         )
 
     def _remove_existing_path(self, path: str):
@@ -184,6 +227,21 @@ class InstallExecutor(QThread):
         else:
             shutil.rmtree(path)
 
+    def _copy_pdk_dir(self, src_pdk_dir: str, dest_pdk_dir: str) -> bool:
+        try:
+            os.makedirs(os.path.dirname(dest_pdk_dir), exist_ok=True)
+            if self._requires_destination_override(dest_pdk_dir) and os.path.lexists(dest_pdk_dir):
+                self.log_line.emit("  Destination PDK already exists, replacing contents")
+                self._remove_existing_path(dest_pdk_dir)
+            elif os.path.exists(dest_pdk_dir):
+                self.log_line.emit("  Destination PDK already exists, merging contents")
+            shutil.copytree(src_pdk_dir, dest_pdk_dir, symlinks=True, dirs_exist_ok=True)
+            self.log_line.emit(f"  Copied {src_pdk_dir} -> {dest_pdk_dir}")
+            return True
+        except Exception as exc:
+            self.log_line.emit(f"  Copy failed: {exc}")
+            return False
+
     def _build_steps(self):
         cfg = self.plan.config
         pdk_root = self.plan.pdk_root or cfg.get_target_pdk_root()
@@ -191,11 +249,23 @@ class InstallExecutor(QThread):
 
         source_root = cfg.get_source_pdk_root()
         target_root = cfg.get_target_pdk_root()
+        dependency_source, _ = get_sg13g2_install_source(cfg)
+
         if self._using_github_source():
             self.steps.append(ExecStep("Fetch PDK source from GitHub"))
-        if cfg.install_dir and (target_root != source_root or self._using_github_source()):
+        if dependency_source == "github":
+            self.steps.append(ExecStep("Fetch SG13G2 dependency from GitHub"))
+
+        copy_selected = self._using_github_source() or (
+            bool(cfg.install_dir) and target_root != source_root
+        )
+        if copy_selected:
             self.steps.append(ExecStep(f"Copy PDK to {cfg.get_target_pdk_dir()}"))
-            self.steps.append(ExecStep(f"Update PDK_ROOT"))
+        if dependency_source in ("local", "github"):
+            dependency_target = cfg.get_target_pdk_dir_for("ihp-sg13g2")
+            self.steps.append(ExecStep(f"Copy SG13G2 to {dependency_target}"))
+        if cfg.install_dir and (copy_selected or dependency_source in ("local", "github")):
+            self.steps.append(ExecStep("Update PDK_ROOT"))
 
         self.steps.append(ExecStep("Set environment variables in .bashrc"))
         self.steps.append(ExecStep("Create .spiceinit symlink"))
@@ -244,24 +314,20 @@ class InstallExecutor(QThread):
         if label == "Fetch PDK source from GitHub":
             return self._fetch_github_source()
 
+        if label == "Fetch SG13G2 dependency from GitHub":
+            return self._fetch_sg13g2_dependency()
+
         if label.startswith("Copy PDK to"):
-            dest_pdk_dir = cfg.get_target_pdk_dir()
-            src_pdk_dir = self._resolved_source_pdk_path()
-            if not dest_pdk_dir:
-                return True
-            try:
-                os.makedirs(os.path.dirname(dest_pdk_dir), exist_ok=True)
-                if self._requires_destination_override(dest_pdk_dir) and os.path.lexists(dest_pdk_dir):
-                    self.log_line.emit("  Destination PDK already exists, replacing contents")
-                    self._remove_existing_path(dest_pdk_dir)
-                elif os.path.exists(dest_pdk_dir):
-                    self.log_line.emit("  Destination PDK already exists, overriding contents")
-                shutil.copytree(src_pdk_dir, dest_pdk_dir, symlinks=True, dirs_exist_ok=True)
-                self.log_line.emit(f"  Copied {src_pdk_dir} -> {dest_pdk_dir}")
-                return True
-            except Exception as e:
-                self.log_line.emit(f"  Copy failed: {e}")
-                return False
+            return self._copy_pdk_dir(
+                self._resolved_source_pdk_path(),
+                cfg.get_target_pdk_dir(),
+            )
+
+        if label.startswith("Copy SG13G2 to"):
+            return self._copy_pdk_dir(
+                self._dependency_source_pdk_path(),
+                cfg.get_target_pdk_dir_for("ihp-sg13g2"),
+            )
 
         if label == "Update PDK_ROOT":
             target_root = cfg.get_target_pdk_root()

@@ -50,6 +50,8 @@ class ChoicePage(QWidget):
         self.github_branch_radio.setChecked(True)
         self.github_commit_radio.setChecked(False)
         self.github_commit_input.clear()
+        self.fetch_sg13g2_cb.setChecked(False)
+        self.override_sg13g2_cb.setChecked(False)
         self._update_github_branch_choices()
         self._set_default_source_root_for_mode(force=True)
 
@@ -162,6 +164,11 @@ class ChoicePage(QWidget):
         self.source_status.hide()
         source_grid.addWidget(self.source_status, 6, 0, 1, 2)
 
+        self.fetch_sg13g2_cb = QCheckBox("Get SG13G2 from GitHub")
+        self.fetch_sg13g2_cb.hide()
+        self.fetch_sg13g2_cb.stateChanged.connect(lambda *_: self.config_changed.emit())
+        source_grid.addWidget(self.fetch_sg13g2_cb, 7, 0, 1, 2)
+
         mode_group = QGroupBox("Mode")
         mode_lay = QHBoxLayout()
         mode_lay.setSpacing(24)
@@ -186,7 +193,12 @@ class ChoicePage(QWidget):
         self.compile_va_cb = QCheckBox("Compile Verilog-A")
         self.compile_va_cb.setChecked(True)
         self.mode_btn_group.buttonClicked.connect(self._on_mode_changed)
+        self.override_sg13g2_cb = QCheckBox("Override existing SG13G2")
+        self.override_sg13g2_cb.hide()
+        self.override_sg13g2_cb.setEnabled(False)
+        self.override_sg13g2_cb.stateChanged.connect(lambda *_: self.config_changed.emit())
         ic_lay.addWidget(self.compile_va_cb)
+        ic_lay.addWidget(self.override_sg13g2_cb)
         ic_lay.addStretch()
         ic_group.setLayout(ic_lay)
         grid.addWidget(ic_group, row, 0, 1, 2)
@@ -216,6 +228,8 @@ class ChoicePage(QWidget):
         self._eda_all_items = []
 
         for sim in Simulator:
+            if sim == Simulator.GNUCAP:
+                continue
             tool = get_tool_definition(sim.value)
             cb = QCheckBox(tool.display_name)
             cb.setChecked(sim == Simulator.NGSPICE)
@@ -255,6 +269,7 @@ class ChoicePage(QWidget):
         self.github_branch_combo.currentIndexChanged.connect(lambda *_: self.config_changed.emit())
         self.github_commit_input.textChanged.connect(lambda *_: self.config_changed.emit())
         self.local_source_input.textChanged.connect(lambda *_: self.config_changed.emit())
+        self.dir_input.textChanged.connect(lambda *_: self.config_changed.emit())
         self._update_github_branch_choices()
         self._update_source_visibility()
 
@@ -374,6 +389,20 @@ class ChoicePage(QWidget):
         self.source_status.show()
         self.source_status.setStyle(self.source_status.style())
 
+    def set_dependency_state(self, show_fetch: bool, target_valid: bool):
+        is_cmos5l = self._get_selected_pdk() == PDKChoice.SG13CMOS5L.value
+        self.fetch_sg13g2_cb.setVisible(is_cmos5l and show_fetch)
+        self.override_sg13g2_cb.setVisible(is_cmos5l)
+        self.override_sg13g2_cb.setEnabled(is_cmos5l and target_valid)
+        if not show_fetch and self.fetch_sg13g2_cb.isChecked():
+            self.fetch_sg13g2_cb.blockSignals(True)
+            self.fetch_sg13g2_cb.setChecked(False)
+            self.fetch_sg13g2_cb.blockSignals(False)
+        if not target_valid and self.override_sg13g2_cb.isChecked():
+            self.override_sg13g2_cb.blockSignals(True)
+            self.override_sg13g2_cb.setChecked(False)
+            self.override_sg13g2_cb.blockSignals(False)
+
     def _update_dir_for_pdk(self):
         if not self._base_dir:
             return
@@ -417,6 +446,8 @@ class ChoicePage(QWidget):
         )
         self.config.github_branch = self.github_branch_combo.currentText() or None
         self.config.github_commit = self.github_commit_input.text().strip() or None
+        self.config.fetch_dependencies_from_github = self.fetch_sg13g2_cb.isChecked()
+        self.config.override_existing_sg13g2 = self.override_sg13g2_cb.isChecked()
 
         self.config.install_dir = (
             self.dir_input.text().strip() or None

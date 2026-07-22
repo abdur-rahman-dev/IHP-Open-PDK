@@ -12,6 +12,8 @@ from installer.backend.checker import (
     check_tools_for_names,
     check_tools,
     get_github_repo_url,
+    get_sg13g2_destination_check,
+    get_sg13g2_install_source,
     get_version,
     get_which_path,
     is_program_installed,
@@ -501,3 +503,90 @@ def test_check_environment_change_mode_omits_destination_row(monkeypatch, fake_p
     results = check_environment(cfg)
 
     assert all(item.variable != "Install Destination" for item in results)
+
+
+def _make_minimal_pdk(path):
+    (path / "libs.tech").mkdir(parents=True)
+    (path / "libs.ref").mkdir(parents=True)
+
+
+def test_cmos5l_preserves_valid_target_sg13g2_for_any_source(fake_pdk_root):
+    cfg = InstallConfig(
+        pdk=PDKChoice.SG13CMOS5L,
+        pdk_root=str(fake_pdk_root),
+        install_dir=str(fake_pdk_root),
+    )
+
+    assert get_sg13g2_install_source(cfg)[0] == "existing"
+
+    cfg.pdk_source_type = PDKSourceType.GITHUB
+    assert get_sg13g2_install_source(cfg)[0] == "existing"
+
+
+def test_cmos5l_missing_local_dependency_requires_opt_in(tmp_path):
+    source_root = tmp_path / "source"
+    target_root = tmp_path / "target"
+    _make_minimal_pdk(source_root / "ihp-sg13cmos5l")
+    cfg = InstallConfig(
+        pdk=PDKChoice.SG13CMOS5L,
+        local_source_root=str(source_root / "ihp-sg13cmos5l"),
+        install_dir=str(target_root),
+    )
+
+    assert get_sg13g2_install_source(cfg)[0] == "missing"
+
+    cfg.fetch_dependencies_from_github = True
+    assert get_sg13g2_install_source(cfg)[0] == "github"
+
+
+def test_cmos5l_override_prefers_distinct_local_sg13g2(tmp_path):
+    source_root = tmp_path / "source"
+    target_root = tmp_path / "target"
+    _make_minimal_pdk(source_root / "ihp-sg13cmos5l")
+    _make_minimal_pdk(source_root / "ihp-sg13g2")
+    _make_minimal_pdk(target_root / "ihp-sg13g2")
+    cfg = InstallConfig(
+        pdk=PDKChoice.SG13CMOS5L,
+        local_source_root=str(source_root / "ihp-sg13cmos5l"),
+        install_dir=str(target_root),
+        override_existing_sg13g2=True,
+    )
+
+    source_kind, source_path = get_sg13g2_install_source(cfg)
+
+    assert source_kind == "local"
+    assert source_path == str(source_root / "ihp-sg13g2")
+    row = get_sg13g2_destination_check(cfg)
+    assert row is not None
+    assert row.requires_confirmation is True
+
+
+def test_cmos5l_override_same_local_target_falls_back_to_github(tmp_path):
+    root = tmp_path / "root"
+    _make_minimal_pdk(root / "ihp-sg13cmos5l")
+    _make_minimal_pdk(root / "ihp-sg13g2")
+    cfg = InstallConfig(
+        pdk=PDKChoice.SG13CMOS5L,
+        local_source_root=str(root / "ihp-sg13cmos5l"),
+        install_dir=str(root),
+        override_existing_sg13g2=True,
+    )
+
+    assert get_sg13g2_install_source(cfg)[0] == "github"
+
+
+def test_explicit_fetch_replaces_valid_target_when_local_sibling_is_missing(
+    fake_pdk_root, tmp_path
+):
+    source_root = tmp_path / "source"
+    _make_minimal_pdk(source_root / "ihp-sg13cmos5l")
+    cfg = InstallConfig(
+        pdk=PDKChoice.SG13CMOS5L,
+        local_source_root=str(source_root / "ihp-sg13cmos5l"),
+        install_dir=str(fake_pdk_root),
+    )
+
+    assert get_sg13g2_install_source(cfg)[0] == "existing"
+
+    cfg.fetch_dependencies_from_github = True
+    assert get_sg13g2_install_source(cfg)[0] == "github"

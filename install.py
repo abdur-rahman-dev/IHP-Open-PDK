@@ -33,6 +33,8 @@ def main():
     parser.add_argument("--local-source")
     parser.add_argument("--github-branch")
     parser.add_argument("--github-commit")
+    parser.add_argument("--fetch-dependencies-from-github", action="store_true")
+    parser.add_argument("--override-sg13g2", action="store_true")
     parser.add_argument("--skip-tool-check", action="store_true")
     parser.add_argument("--no-compile-verilog-a", action="store_true")
     parser.add_argument("--eda-config")

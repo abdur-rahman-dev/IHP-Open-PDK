@@ -16,6 +16,8 @@ def _args(**overrides):
         "local_source": None,
         "github_branch": None,
         "github_commit": None,
+        "fetch_dependencies_from_github": False,
+        "override_sg13g2": False,
         "skip_tool_check": False,
         "no_compile_verilog_a": False,
         "eda_config": None,
@@ -87,3 +89,16 @@ def test_run_nogui_install_rejects_override_without_flag(fake_pdk_root, fake_hom
 
     assert rc == 2
     assert "--allow-override" in stderr.getvalue()
+
+
+def test_build_config_from_args_serializes_dependency_flags(fake_pdk_root):
+    args = _args(
+        pdk=PDKChoice.SG13CMOS5L.value,
+        fetch_dependencies_from_github=True,
+        override_sg13g2=True,
+    )
+
+    config = cli_runner.build_config_from_args(args, str(fake_pdk_root))
+
+    assert config.fetch_dependencies_from_github is True
+    assert config.override_existing_sg13g2 is True

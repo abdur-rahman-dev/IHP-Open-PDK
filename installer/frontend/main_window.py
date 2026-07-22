@@ -19,15 +19,28 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QFont, QCloseEvent, QPixmap
 
-from installer.backend.models import InstallConfig, GitHubSourceMode, PDKSourceType
+from installer.backend.models import InstallConfig, GitHubSourceMode, PDKChoice, PDKSourceType
 from installer.backend.checker import (
+    get_sg13g2_install_source,
+    get_sg13g2_local_source_dir,
+    get_sg13g2_target_dir,
+    is_valid_sg13g2_dir,
     validate_github_commit_input,
     validate_github_source,
     validate_local_source,
+    validate_source_with_dependencies,
 )
 from installer.frontend.choice_page import ChoicePage
 from installer.frontend.check_page import CheckPage
 from installer.frontend.tool_check_window import ToolCheckWindow
+
+
+def validate_ui_source(config: InstallConfig) -> tuple[bool, str]:
+    if config.pdk == PDKChoice.SG13CMOS5L:
+        return validate_source_with_dependencies(config)
+    if config.pdk_source_type == PDKSourceType.GITHUB:
+        return validate_github_source(config)
+    return validate_local_source(config)
 
 
 class GitHubValidationWorker(QThread):
@@ -39,7 +52,7 @@ class GitHubValidationWorker(QThread):
         self.config = config
 
     def run(self):
-        ok, message = validate_github_source(self.config)
+        ok, message = validate_ui_source(self.config)
         self.finished_validation.emit(
             self.request_id,
             ok,
@@ -283,8 +296,29 @@ class MainWindow(QMainWindow):
         if self.current_step == 0:
             self._refresh_source_validity()
 
-    def _github_validation_cache_key(self, config: InstallConfig) -> tuple[str, str]:
-        return (config.pdk.value, (config.github_commit or "").strip().lower())
+    def _update_dependency_controls(self, config: InstallConfig) -> InstallConfig:
+        if config.pdk != PDKChoice.SG13CMOS5L:
+            self.choice_page.set_dependency_state(False, False)
+            return self.choice_page.get_config()
+
+        target_dir = get_sg13g2_target_dir(config)
+        target_valid = is_valid_sg13g2_dir(target_dir)
+        show_fetch = False
+        if config.pdk_source_type == PDKSourceType.LOCAL:
+            local_dir = get_sg13g2_local_source_dir(config)
+            local_valid = is_valid_sg13g2_dir(local_dir)
+            show_fetch = not local_valid
+        self.choice_page.set_dependency_state(show_fetch, target_valid)
+        return self.choice_page.get_config()
+
+    def _github_validation_cache_key(self, config: InstallConfig) -> tuple[str, ...]:
+        dependency_source, _ = get_sg13g2_install_source(config)
+        return (
+            config.pdk.value,
+            config.github_source_mode.value,
+            config.get_effective_github_ref().lower(),
+            dependency_source,
+        )
 
     def _invalidate_github_validation(self):
         self._github_validation_request_id += 1
@@ -347,13 +381,13 @@ class MainWindow(QMainWindow):
     def _validate_source(self, config: InstallConfig, show_dialog: bool = False) -> bool:
         self._invalidate_github_validation()
         if config.pdk_source_type == PDKSourceType.LOCAL:
-            ok, message = validate_local_source(config)
+            ok, message = validate_ui_source(config)
             self.choice_page.set_source_status(ok, message)
             if not ok and show_dialog:
                 QMessageBox.warning(
                     self,
                     "Invalid Local PDK Source",
-                    f"The selected local source does not look like a valid {config.get_selected_pdk_dirname()} PDK.\n\n{message}",
+                    message,
                 )
             return ok
 
@@ -366,7 +400,7 @@ class MainWindow(QMainWindow):
                     QMessageBox.warning(self, "GitHub Source Unavailable", message)
                 return False
 
-        ok, message = validate_github_source(config)
+        ok, message = validate_ui_source(config)
         self.choice_page.set_source_status(ok, message if not ok else "")
         if not ok and show_dialog:
             QMessageBox.warning(
@@ -377,7 +411,7 @@ class MainWindow(QMainWindow):
         return ok
 
     def _refresh_source_validity(self):
-        config = self.choice_page.get_config()
+        config = self._update_dependency_controls(self.choice_page.get_config())
         if config.pdk_source_type == PDKSourceType.GITHUB:
             commit = (config.github_commit or "").strip()
             if config.github_source_mode == GitHubSourceMode.COMMIT and commit:

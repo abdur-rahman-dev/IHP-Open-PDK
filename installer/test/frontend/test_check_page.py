@@ -27,6 +27,7 @@ def test_all_tc_tools_visible_list(qtbot, install_config, theme_manager):
 
     assert len(page.ALL_TC_TOOLS) == 12
     assert "openvaf/openvaf-r" in page.ALL_TC_TOOLS
+    assert "gnucap" in page.ALL_TC_TOOLS
     assert "buildxyceplugin" not in page.ALL_TC_TOOLS
     assert "gnucap-mg-vams" not in page.ALL_TC_TOOLS
     assert page.tools_table.selectionMode() == QTableWidget.SelectionMode.NoSelection

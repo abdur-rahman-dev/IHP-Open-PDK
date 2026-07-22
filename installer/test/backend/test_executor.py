@@ -284,3 +284,90 @@ def test_run_emits_blank_line_and_step_header(fake_pdk_root, fake_home, monkeypa
 
     assert logs[0] == ""
     assert logs[1] == "Step 1: Demo step"
+
+
+def _make_minimal_dependency_pdk(path):
+    (path / "libs.tech").mkdir(parents=True)
+    (path / "libs.ref").mkdir(parents=True)
+
+
+def test_github_cmos5l_preserves_valid_target_sg13g2(fake_pdk_root, fake_home):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk = PDKChoice.SG13CMOS5L
+    plan.config.pdk_source_type = PDKSourceType.GITHUB
+
+    executor = InstallExecutor(plan)
+    executor._build_steps()
+    labels = [step.label for step in executor.steps]
+
+    assert "Fetch PDK source from GitHub" in labels
+    assert "Fetch SG13G2 dependency from GitHub" not in labels
+    assert not any(label.startswith("Copy SG13G2 to") for label in labels)
+
+
+def test_github_cmos5l_override_fetches_target_sg13g2(fake_pdk_root, fake_home):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk = PDKChoice.SG13CMOS5L
+    plan.config.pdk_source_type = PDKSourceType.GITHUB
+    plan.config.override_existing_sg13g2 = True
+
+    executor = InstallExecutor(plan)
+    executor._build_steps()
+    labels = [step.label for step in executor.steps]
+
+    assert "Fetch SG13G2 dependency from GitHub" in labels
+    assert any(label.startswith("Copy SG13G2 to") for label in labels)
+
+
+def test_github_cmos5l_fetches_missing_target_sg13g2(fake_pdk_root, fake_home, tmp_path):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk = PDKChoice.SG13CMOS5L
+    plan.config.pdk_source_type = PDKSourceType.GITHUB
+    plan.config.install_dir = str(tmp_path / "target")
+
+    executor = InstallExecutor(plan)
+    executor._build_steps()
+    labels = [step.label for step in executor.steps]
+
+    assert "Fetch SG13G2 dependency from GitHub" in labels
+    assert any(label.startswith("Copy SG13G2 to") for label in labels)
+
+
+def test_local_cmos5l_copies_distinct_sg13g2_sibling(fake_pdk_root, fake_home, tmp_path):
+    source_root = tmp_path / "source"
+    target_root = tmp_path / "target"
+    _make_minimal_dependency_pdk(source_root / "ihp-sg13cmos5l")
+    _make_minimal_dependency_pdk(source_root / "ihp-sg13g2")
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk = PDKChoice.SG13CMOS5L
+    plan.config.local_source_root = str(source_root / "ihp-sg13cmos5l")
+    plan.config.install_dir = str(target_root)
+
+    executor = InstallExecutor(plan)
+    executor._build_steps()
+    labels = [step.label for step in executor.steps]
+
+    assert "Fetch SG13G2 dependency from GitHub" not in labels
+    assert f"Copy SG13G2 to {target_root / 'ihp-sg13g2'}" in labels
+
+
+def test_fetch_sg13g2_dependency_uses_registry_default_and_submodules(
+    fake_pdk_root, fake_home, monkeypatch, tmp_path
+):
+    plan = _make_plan(fake_pdk_root, fake_home)
+    plan.config.pdk = PDKChoice.SG13CMOS5L
+    executor = InstallExecutor(plan)
+    clone_dir = tmp_path / "clone"
+    _make_minimal_dependency_pdk(clone_dir / "ihp-sg13g2")
+    monkeypatch.setattr("installer.backend.executor.tempfile.mkdtemp", lambda prefix: str(clone_dir))
+    seen = []
+    monkeypatch.setattr(
+        executor,
+        "_run_cmd",
+        lambda cmd, cwd=None: (seen.append((cmd, cwd)) or True, "ok"),
+    )
+
+    assert executor._fetch_sg13g2_dependency() is True
+    assert "--branch dev" in seen[0][0]
+    assert "--recurse-submodules" in seen[0][0]
+    assert executor._resolved_dependency_pdk_dir == str(clone_dir / "ihp-sg13g2")

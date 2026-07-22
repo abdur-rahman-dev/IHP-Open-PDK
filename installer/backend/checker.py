@@ -19,6 +19,7 @@ from .models import (
     PDKChoice,
     PDKSourceType,
 )
+from .pdk_registry import get_pdk_definition
 
 VERSION_FLAGS = {
     "ngspice": ["-v"],
@@ -162,6 +163,91 @@ def get_github_repo_url(config: InstallConfig) -> str:
     return GITHUB_REPOS[config.pdk]
 
 
+def validate_pdk_directory(pdk_dir: str, pdk_id: str) -> tuple[bool, str]:
+    missing = []
+    if not os.path.isdir(pdk_dir):
+        missing.append(pdk_dir)
+    for required_dir in get_pdk_definition(pdk_id).required_dirs:
+        required_path = os.path.join(pdk_dir, required_dir)
+        if not os.path.isdir(required_path):
+            missing.append(required_path)
+    if missing:
+        return False, "Missing required paths:\n" + "\n".join(missing)
+    return True, ""
+
+
+def get_sg13g2_target_dir(config: InstallConfig) -> str:
+    return config.get_target_pdk_dir_for(PDKChoice.SG13G2.value)
+
+
+def get_sg13g2_local_source_dir(config: InstallConfig) -> str:
+    return os.path.join(config.get_source_pdk_root(), PDKChoice.SG13G2.value)
+
+
+def is_valid_sg13g2_dir(path: str) -> bool:
+    ok, _ = validate_pdk_directory(path, PDKChoice.SG13G2.value)
+    return ok
+
+
+def get_sg13g2_install_source(config: InstallConfig) -> tuple[str, str | None]:
+    """Return dependency source kind (existing/local/github/missing) and path."""
+    if config.pdk != PDKChoice.SG13CMOS5L:
+        return "existing", None
+
+    explicit_local_github_fetch = (
+        config.pdk_source_type == PDKSourceType.LOCAL
+        and config.fetch_dependencies_from_github
+    )
+    if explicit_local_github_fetch:
+        return "github", None
+
+    target_dir = get_sg13g2_target_dir(config)
+    target_valid = is_valid_sg13g2_dir(target_dir)
+    if target_valid and not config.override_existing_sg13g2:
+        return "existing", target_dir
+
+    if config.pdk_source_type == PDKSourceType.LOCAL:
+        local_dir = get_sg13g2_local_source_dir(config)
+        local_valid = is_valid_sg13g2_dir(local_dir)
+        same_path = os.path.abspath(local_dir) == os.path.abspath(target_dir)
+        if local_valid and not same_path:
+            return "local", local_dir
+        if config.override_existing_sg13g2:
+            return "github", None
+        return "missing", None
+
+    return "github", None
+
+
+def validate_sg13g2_github_source() -> tuple[bool, str]:
+    dependency = InstallConfig(
+        pdk=PDKChoice.SG13G2,
+        pdk_source_type=PDKSourceType.GITHUB,
+        github_branch=get_pdk_definition(PDKChoice.SG13G2.value).default_branch,
+    )
+    return validate_github_source(dependency)
+
+
+def validate_source_with_dependencies(config: InstallConfig) -> tuple[bool, str]:
+    if config.pdk_source_type == PDKSourceType.GITHUB:
+        ok, message = validate_github_source(config)
+    else:
+        ok, message = validate_local_source(config)
+    if not ok or config.pdk != PDKChoice.SG13CMOS5L:
+        return ok, message
+
+    source_kind, _ = get_sg13g2_install_source(config)
+    if source_kind == "missing":
+        return False, (
+            "A valid SG13G2 dependency was not found in the installation target "
+            "or beside the local SG13CMOS5L source. Select 'Get SG13G2 from GitHub' "
+            "or use --fetch-dependencies-from-github to continue."
+        )
+    if source_kind == "github":
+        return validate_sg13g2_github_source()
+    return True, ""
+
+
 def validate_local_source(config: InstallConfig) -> tuple[bool, str]:
     pdk_dir = (config.local_source_root or "").strip()
     if not pdk_dir:
@@ -176,18 +262,7 @@ def validate_local_source(config: InstallConfig) -> tuple[bool, str]:
     parent = os.path.dirname(norm)
     if not parent or parent == norm:
         return False, "Cannot derive PDK root from the selected folder. Select the PDK directory itself, not the PDK root."
-    missing = []
-    if not os.path.isdir(pdk_dir):
-        missing.append(pdk_dir)
-    libs_tech = os.path.join(pdk_dir, "libs.tech")
-    libs_ref = os.path.join(pdk_dir, "libs.ref")
-    if not os.path.isdir(libs_tech):
-        missing.append(libs_tech)
-    if not os.path.isdir(libs_ref):
-        missing.append(libs_ref)
-    if missing:
-        return False, "Missing required paths:\n" + "\n".join(missing)
-    return True, ""
+    return validate_pdk_directory(pdk_dir, config.pdk.value)
 
 
 def validate_github_commit_input(commit: str) -> tuple[bool, str]:
@@ -308,7 +383,10 @@ def validate_github_source(config: InstallConfig) -> tuple[bool, str]:
 
 
 def get_install_destination_check(config: InstallConfig) -> EnvCheckResult | None:
-    if config.install_mode.value != "new" or not config.install_dir:
+    no_local_destination = (
+        not config.install_dir and config.pdk_source_type != PDKSourceType.GITHUB
+    )
+    if config.install_mode.value != "new" or no_local_destination:
         return None
 
     source_kind = "GitHub source" if config.pdk_source_type == PDKSourceType.GITHUB else "local source"
@@ -341,6 +419,43 @@ def get_install_destination_check(config: InstallConfig) -> EnvCheckResult | Non
         is_set=not will_sync,
         current_value=current_value,
         expected_value=target_pdk_dir,
+        action=action,
+        requires_confirmation=requires_confirmation,
+        reason_code=reason_code,
+    )
+
+
+def get_sg13g2_destination_check(config: InstallConfig) -> EnvCheckResult | None:
+    source_kind, source_path = get_sg13g2_install_source(config)
+    if source_kind in ("existing", "missing"):
+        return None
+
+    target_dir = get_sg13g2_target_dir(config)
+    if source_kind == "local" and source_path:
+        will_sync = os.path.abspath(source_path) != os.path.abspath(target_dir)
+        source_label = "local SG13G2 source"
+    else:
+        will_sync = True
+        source_label = "GitHub SG13G2 source"
+    if not will_sync:
+        return None
+
+    requires_confirmation = False
+    reason_code = None
+    if not os.path.exists(target_dir):
+        action = f"Will populate dependency from {source_label}"
+    elif os.path.isdir(target_dir) and not os.listdir(target_dir):
+        action = f"Will populate empty dependency from {source_label}"
+    else:
+        action = f"Dependency will be overridden with new contents from {source_label}"
+        requires_confirmation = True
+        reason_code = "install_destination_override"
+
+    return EnvCheckResult(
+        variable="SG13G2 Destination",
+        is_set=False,
+        current_value=target_dir,
+        expected_value=target_dir,
         action=action,
         requires_confirmation=requires_confirmation,
         reason_code=reason_code,
@@ -512,6 +627,8 @@ def check_tools_for_names(tool_names: list[str], config: InstallConfig) -> list[
         github_branch=config.github_branch,
         github_commit=config.github_commit,
         resolved_github_commit=config.resolved_github_commit,
+        fetch_dependencies_from_github=config.fetch_dependencies_from_github,
+        override_existing_sg13g2=config.override_existing_sg13g2,
         compile_verilog_a=config.compile_verilog_a,
         skip_tool_check=config.skip_tool_check,
     )
@@ -629,6 +746,10 @@ def check_environment(config: InstallConfig) -> list[EnvCheckResult]:
     if install_destination is not None:
         results.append(install_destination)
 
+    dependency_destination = get_sg13g2_destination_check(config)
+    if dependency_destination is not None:
+        results.append(dependency_destination)
+
     return results
 
 
@@ -726,10 +847,37 @@ def build_install_plan(config: InstallConfig) -> InstallPlan:
     if LayoutEditor.MAGIC in config.layout_editors:
         plan.actions.append("Configure Magic layout editor")
 
-    if config.install_dir:
-        src_root = config.get_source_pdk_root()
-        target_root = config.get_target_pdk_root()
-        plan.actions.insert(0, f"Copy PDK from {src_root}/{config.pdk.value} to {config.get_target_pdk_dir()}")
-        plan.actions.insert(1, f"Update PDK_ROOT to {target_root}")
+    src_root = config.get_source_pdk_root()
+    target_root = config.get_target_pdk_root()
+    copy_selected = config.pdk_source_type == PDKSourceType.GITHUB or (
+        bool(config.install_dir) and target_root != src_root
+    )
+    action_index = 0
+    if copy_selected:
+        plan.actions.insert(
+            action_index,
+            f"Install {config.pdk.value} into {config.get_target_pdk_dir()}",
+        )
+        action_index += 1
+
+    dependency_source, dependency_path = get_sg13g2_install_source(config)
+    if dependency_source == "local":
+        plan.actions.insert(
+            action_index,
+            f"Copy SG13G2 from {dependency_path} to {get_sg13g2_target_dir(config)}",
+        )
+        action_index += 1
+    elif dependency_source == "github":
+        plan.actions.insert(
+            action_index,
+            f"Fetch SG13G2 from GitHub and install it into {get_sg13g2_target_dir(config)}",
+        )
+        action_index += 1
+    elif config.pdk == PDKChoice.SG13CMOS5L:
+        plan.actions.insert(action_index, f"Reuse existing SG13G2 at {get_sg13g2_target_dir(config)}")
+        action_index += 1
+
+    if config.install_dir and (copy_selected or dependency_source in ("local", "github")):
+        plan.actions.insert(action_index, f"Update PDK_ROOT to {target_root}")
 
     return plan

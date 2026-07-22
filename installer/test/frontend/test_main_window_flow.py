@@ -280,3 +280,80 @@ def test_back_from_failure_preserves_values_and_returns_to_configuration(qtbot, 
 
     assert called == [0]
     assert window.choice_page.mode_change.isChecked() is True
+
+
+def _select_cmos5l(window):
+    for button in window.choice_page.pdk_btn_group.buttons():
+        if button.property("pdk_value") == "ihp-sg13cmos5l":
+            button.click()
+            return
+
+
+def test_valid_target_sg13g2_enables_unchecked_override_control(
+    qtbot, theme_manager, mock_env
+):
+    window = _make_window(qtbot, theme_manager)
+
+    _select_cmos5l(window)
+    window._refresh_source_validity()
+
+    assert window.choice_page.override_sg13g2_cb.isVisible() is True
+    assert window.choice_page.override_sg13g2_cb.isEnabled() is True
+    assert window.choice_page.override_sg13g2_cb.isChecked() is False
+    assert window.choice_page.fetch_sg13g2_cb.isHidden() is True
+
+
+def test_missing_local_sg13g2_fetch_option_gates_next(
+    qtbot, theme_manager, mock_env, monkeypatch
+):
+    monkeypatch.setattr(
+        "installer.frontend.main_window.is_valid_sg13g2_dir",
+        lambda path: False,
+    )
+    monkeypatch.setattr(
+        "installer.frontend.main_window.validate_source_with_dependencies",
+        lambda cfg: (
+            cfg.fetch_dependencies_from_github,
+            "" if cfg.fetch_dependencies_from_github else "SG13G2 is missing",
+        ),
+    )
+    window = _make_window(qtbot, theme_manager)
+
+    _select_cmos5l(window)
+    window._refresh_source_validity()
+
+    assert window.choice_page.fetch_sg13g2_cb.isVisible() is True
+    assert window.next_btn.isEnabled() is False
+
+    window.choice_page.fetch_sg13g2_cb.click()
+
+    assert window.next_btn.isEnabled() is True
+
+
+def test_valid_target_with_missing_local_sibling_shows_github_fetch(
+    qtbot, theme_manager, mock_env, monkeypatch, fake_pdk_root, tmp_path
+):
+    target_sg13g2 = str(fake_pdk_root / "ihp-sg13g2")
+    monkeypatch.setattr(
+        "installer.frontend.main_window.is_valid_sg13g2_dir",
+        lambda path: path == target_sg13g2,
+    )
+    monkeypatch.setattr(
+        "installer.frontend.main_window.validate_source_with_dependencies",
+        lambda cfg: (True, ""),
+    )
+    window = _make_window(qtbot, theme_manager)
+
+    _select_cmos5l(window)
+    window.choice_page.local_source_input.setText(
+        str(tmp_path / "local-source" / "ihp-sg13cmos5l")
+    )
+    window._refresh_source_validity()
+
+    assert window.choice_page.override_sg13g2_cb.isEnabled() is True
+    assert window.choice_page.fetch_sg13g2_cb.isVisible() is True
+    assert window.choice_page.fetch_sg13g2_cb.isChecked() is False
+
+    window.choice_page.fetch_sg13g2_cb.click()
+
+    assert window.choice_page.get_config().fetch_dependencies_from_github is True
